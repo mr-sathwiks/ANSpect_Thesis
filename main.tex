@@ -1,0 +1,188 @@
+% ============================================================
+% main.tex
+% ANSpect O-EMA · MS Thesis · UTD Electrical Engineering
+% Compiler: pdflatex · Class: utdthesis.cls
+% Style: IEEEtran (natbib numbers mode)
+% ------------------------------------------------------------
+% CHANGELOG
+% v1.0  27-Aug-2026  Initial baseline
+% v1.1  01-Sep-2026  Split chapters.tex → 5 separate chapter files
+%                    Added \setcounter{tocdepth}{3}
+%                    Added pdfborder={0 0 0} to hyperref
+%                    Added \raggedbottom
+%                    Updated author, prevdegrees, committeemember*
+%                    Updated \degreefull to Master of Science
+%                    Updated \title with \texttrademark{}
+% v1.2  01-Sep-2026  Added conservative display skip adjustments
+%                    to reduce excess equation spacing (8pt values)
+%                    Verified: no UTD rule violation, no forbidden
+%                    package, compatible with \flushbottom
+% v1.3  02-Sep-2026  Added glossaries pkg (Option B) for List of Abbreviations
+%                    Auto-collect from \gls{} in text · auto-sort · no page numbers
+%                    TOC entry auto-generated · first-use expansion enabled
+%                    abbrevs.tex → separate definitions file
+%                    glossaries loads AFTER hyperref (pkg requirement — not a UTD violation)
+% v1.4  02-Sep-2026  Removed toc option from glossaries pkg
+%                    utdthesis.cls auto-generates TOC entry — toc option caused duplicate
+% ============================================================
+
+\documentclass[doublespacing]{utdthesis}
+
+% ------------------------------------------------------------
+% PACKAGES
+% FORBIDDEN (UTD_RULES.md): geometry · setspace ·
+%   font-size overrides · caption style overrides ·
+%   chapter heading overrides · TOC/LOF/LOT overrides
+% ------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{microtype}
+\usepackage{rotating}           % sidewaystable only
+\usepackage[numbers]{natbib}
+\bibliographystyle{IEEEtran}
+\setcounter{tocdepth}{3}
+
+% ------------------------------------------------------------
+% EQUATION DISPLAY SPACING
+% Reduces excess vertical space around display equations
+% caused by utdthesis.cls doublespacing mode.
+% v1.2  01-Sep-2026  Added — conservative 8pt values
+% UTD compliance: not a forbidden package, no line-spacing
+%                 override, compatible with \flushbottom
+% ------------------------------------------------------------
+\setlength{\abovedisplayskip}{8pt plus 2pt minus 2pt}
+\setlength{\belowdisplayskip}{8pt plus 2pt minus 2pt}
+\setlength{\abovedisplayshortskip}{4pt plus 2pt}
+\setlength{\belowdisplayshortskip}{4pt plus 2pt}
+
+% hyperref — always last before acronym
+\usepackage[pdftex,bookmarks,colorlinks=false,pdfborder={0 0 0}]{hyperref}
+
+% acronym — List of Abbreviations
+% Single-pass · no makeglossaries · no external tools
+% \acro{label}[SHORT]{Long Form}  defined in abbrevs.tex
+% \ac{label}  → "Long Form (SHORT)" first use, "SHORT" thereafter
+% \acp{label} → plural (appends -s to SHORT)
+\usepackage{acronym}
+
+% ------------------------------------------------------------
+% THESIS METADATA — fill all [PENDING] before submission
+% ------------------------------------------------------------
+\author{Sathwik Sudhindranath}
+\title{RFSoC 4x2 FPGA Implementation ANSpect O-EMA\texttrademark{} j.83B Tx/Rx [NDA-TITLE]}
+\thesistype{Thesis}
+\degreefull{Master of Science}
+\degreeabbr{MS}
+\subject{Electrical Engineering}
+\graduationmonth{December}
+\graduationyear{2026}
+\prevdegrees{B.E., Electronics \& Communication Engineering,
+  Visvesvaraya Technological University, 2021}
+\committeemember*{Dr.\ Benjamin Carrion Schaefer}
+\committeemember{[MEMBER 2 PENDING]}
+\committeemember{[MEMBER 3 PENDING]}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% ------------------------------------------------------------
+% FRONTMATTER — roman numeral pagination
+% Page count order per UTD_RULES.md:
+%   First Page · Copyright · (Dedication) · Title ·
+%   Acknowledgments · Abstract · TOC · LOF · LOT ·
+%   (List of Abbreviations)
+% ------------------------------------------------------------
+\frontmatter
+
+\signaturepage           % First Page (formerly signature page)
+\copyrightpage{2026}     % recommended — year = conferral year
+
+% Dedication — optional; uncomment when ready
+% \begin{dedication}
+%   % TODO: dedication text
+% \end{dedication}
+
+\maketitle               % Title Page
+
+\begin{acks}{December 2026}
+  % TODO: Acknowledgments — complete sentences and paragraphs
+  % No \section commands inside acks environment
+\end{acks}
+
+\begin{abstract}
+  % TODO: ≤500 words — continuous prose — no bullets
+  % Run 'word count abstract [tex]' before submission
+  % Title must match title page exactly
+  % Author name must match all other pages
+\end{abstract}
+
+\tableofcontents
+\listoffigures           % required: ≥5 figures expected
+\listoftables            % required: ≥5 tables expected
+
+% List of Abbreviations — built from abbrevs.tex
+% Single pdflatex pass · no makeglossaries required
+% utdthesis.cls styles \chapter* heading; TOC entry added manually
+\phantomsection
+\addcontentsline{toc}{chapter}{List of Abbreviations}
+\chapter*{List of Abbreviations}
+\begin{acronym}[MPEG-TS]   % longest SHORT label sets column width
+  \input{abbrevs}
+\end{acronym}
+
+% ------------------------------------------------------------
+% MAINMATTER — Arabic numeral pagination, begins at 1
+% ------------------------------------------------------------
+\mainmatter
+
+% ------------------------------------------------------------
+% CHAPTER INPUTS — one file per chapter
+% v1.1 01-Sep-2026: split from monolithic chapters.tex
+% ------------------------------------------------------------
+\input{ch1_introduction}
+\input{ch2_fpga_background}
+\input{ch3_dsp_background}
+\input{ch4_implementation}
+\input{ch5_conclusion}
+
+% ------------------------------------------------------------
+% BACK MATTER
+% ------------------------------------------------------------
+
+% Appendices — none planned; uncomment if added
+% \appendix
+% \chapter*{Appendix Title}
+% % TODO: appendix content
+
+% References — REFERENCES heading auto-generated by thesisbib
+\begin{thesisbib}
+  \setlength{\bibsep}{12pt plus 1pt minus 1pt}
+  \bibliography{references}    % references.bib
+\end{thesisbib}
+
+% Biographical Sketch
+\begin{biosketch}
+  % TODO: third-person biographical sketch
+  % May include: education, degrees, publications, experience
+  % No \section commands inside biosketch environment
+  Sathwik Sudhindranath received the B.E.\ degree in Electronics
+  and Communication Engineering from Visvesvaraya Technological
+  University, India, in 2021. He is currently pursuing the M.S.\
+  degree in Electrical Engineering with a concentration in
+  Computing Systems at The University of Texas at Dallas,
+  Richardson, Texas, expected December 2026.
+  % TODO: add publications, industry experience, or awards if any
+\end{biosketch}
+
+% Curriculum Vitae — pages unnumbered, listed in TOC
+\begin{vita}
+  % TODO: CV content
+  % No special formatting requirements
+  % External CV pages may be substituted at print time
+  % (must still issue \begin{vita}...\end{vita} for TOC entry)
+\end{vita}
+
+\end{document}

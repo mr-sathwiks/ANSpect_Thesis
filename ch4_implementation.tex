@@ -1,0 +1,324 @@
+% ============================================================
+% ch4_implementation.tex
+% ANSpect O-EMA · MS Thesis · UTD Electrical Engineering
+% \input target — no \documentclass or \begin{document}
+% STATUS: NDA-IMPL GATED — see NDA_SCOPE.md
+%         Section 4.8 OPEN — all others require handoff + NDA CLEAR
+% v1.0  01-Sep-2026  Split from chapters.tex
+% ============================================================
+
+% ============================================================
+% CHAPTER 4 — IMPLEMENTATION
+% STATUS: NDA-IMPL — CHAPTER GATED
+%
+% GATE REQUIREMENTS (all must be met before any section drafts):
+%   1. NDA CLEAR: IMPL [section] received for that section
+%   2. Handoff file for that module uploaded in current session
+%   3. Content sourced exclusively from handoff file
+%   4. nda scrub run on all output before delivery
+%
+% EXCEPTION: Section 4.8 (Test and Measurement) — OPEN
+%   4.8.1 H-Thunder-1 — public product spec
+%   4.8.2 HDHomeRun    — public product
+%   4.8.3 Spectrum analysis — general methodology
+% ============================================================
+
+\chapter{Implementation}
+\label{ch:implementation}
+% [NDA-IMPL] — chapter-level gate active
+% TODO: Chapter intro paragraph — structural overview only
+%   - High-level system block: PS + PL + RFDC + RF front-end
+%   - No architecture detail until NDA CLEAR: IMPL [4.1] received
+%   - Reference PYNQ framework existence (no internals)
+ 
+% ------------------------------------------------------------
+\section{System Architecture Overview}
+\label{sec:sys_arch}
+% [NDA-IMPL] — BLOCKED
+% TODO: Draft requires NDA CLEAR: IMPL [4.1] + handoff upload
+%   - Top-level system diagram
+%   - PS/PL partition overview
+%   - Data flow: UDP RX → TX chain → DAC → RF → ADC → RX chain → output
+%   - No AXI register map, no overlay internals without clearance
+\clearpage  
+% ------------------------------------------------------------
+\section{Processing System}
+\label{sec:ps}
+% [NDA-IMPL] — BLOCKED
+% TODO: Draft requires NDA CLEAR: IMPL [4.2] + handoff upload
+%   - PS subsystem structural overview only
+%   - No Python driver detail, no DMA control code without clearance
+
+\subsection{UDP/GigE RX}
+\label{subsec:ps_udp_rx}
+% [NDA-IMPL] — BLOCKED (PS-01)
+% TODO: Requires NDA CLEAR: IMPL [4.2.1] + handoff for PS-01
+
+\subsection{TX Chain}
+\label{subsec:ps_tx_chain}
+% [NDA-IMPL] — BLOCKED (PS-02)
+% TODO: Requires NDA CLEAR: IMPL [4.2.2] + handoff for PS-02
+
+\subsection{DMA Control}
+\label{subsec:ps_dma_control}
+% [NDA-IMPL] — BLOCKED (PS-03, PS-05)
+% TODO: Requires NDA CLEAR: IMPL [4.2.3] + handoff for PS-03/PS-05
+\clearpage  
+% ------------------------------------------------------------
+\section{Programmable Logic: TX Chain}
+\label{sec:pl_tx}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.3] + handoff
+%   - PL-01 through PL-12 — one subsection each
+%   - PL-10 (SD-FEC LDPC) also touches [NDA-ALGO] boundary —
+%     see subsection note below
+
+\subsection{PL-01: AXI DMA MM2S}
+\label{subsec:pl01}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.1] + handoff for PL-01
+
+\subsection{PL-02: Transport Framing}
+\label{subsec:pl02}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.2] + handoff for PL-02
+
+\subsection{PL-03: Reed-Solomon Encoder}
+\label{subsec:pl03}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.3] + handoff for PL-03
+
+\subsection{PL-04: Convolutional Interleaver}
+\label{subsec:pl04}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.4] + handoff for PL-04
+
+\subsection{PL-05: Randomizer}
+\label{subsec:pl05}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.5] + handoff for PL-05
+
+\subsection{PL-06: Frame Sync Encoder}
+\label{subsec:pl06}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.6] + handoff for PL-06
+
+\subsection{PL-07: Trellis Encoder}
+\label{subsec:pl07}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.7] + handoff for PL-07
+
+\subsection{PL-08: QAM-256 Mapper}
+\label{subsec:pl08}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.8] + handoff for PL-08
+
+\subsection{PL-09: SRRC FIR TX}
+\label{subsec:pl09}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.9] + handoff for PL-09
+
+\subsection{PL-10: SD-FEC LDPC}
+\label{subsec:pl10}
+% [NDA-IMPL] — BLOCKED
+% [NDA-ALGO] — LDPC interaction with O-EMA overlay
+%              PERMANENTLY BLOCKED — never draftable
+% TODO: Structural existence may be acknowledged only
+%   - Internal algorithm: hard block, do not draft or paraphrase
+%   - Requires NDA CLEAR: IMPL [4.3.10] for structural frame only
+
+\subsection{PL-11: Register File RTL}
+\label{subsec:pl11}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.11] + handoff for PL-11
+%   - AXI-Lite register map is NDA-IMPL — do not include offsets
+%     or field definitions without explicit clearance
+
+\subsection{PL-12: IQ Combiner}
+\label{subsec:pl12}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.3.12] + handoff for PL-12
+\clearpage  
+% ------------------------------------------------------------
+\section{Programmable Logic: RX Chain}
+\label{sec:pl_rx}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.4] + handoff
+%   - PL-13 through PL-23 — one subsection each
+
+\subsection{PL-13: SRRC FIR RX}
+\label{subsec:pl13}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.1] + handoff for PL-13
+
+\subsection{PL-14: Symbol Timing Recovery}
+\label{subsec:pl14}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.2] + handoff for PL-14
+
+\subsection{PL-15: Carrier and Phase Recovery}
+\label{subsec:pl15}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.3] + handoff for PL-15
+
+\subsection{PL-16: QAM-256 Demapper}
+\label{subsec:pl16}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.4] + handoff for PL-16
+
+\subsection{PL-17: Trellis Decoder}
+\label{subsec:pl17}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.5] + handoff for PL-17
+
+\subsection{PL-18: Frame Sync Detection}
+\label{subsec:pl18}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.6] + handoff for PL-18
+
+\subsection{PL-19: De-Randomizer}
+\label{subsec:pl19}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.7] + handoff for PL-19
+
+\subsection{PL-20: De-Interleaver}
+\label{subsec:pl20}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.8] + handoff for PL-20
+
+\subsection{PL-21: Reed-Solomon Decoder}
+\label{subsec:pl21}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.9] + handoff for PL-21
+
+\subsection{PL-22: Transport Framing RX}
+\label{subsec:pl22}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.10] + handoff for PL-22
+
+\subsection{PL-23: AXI DMA S2MM}
+\label{subsec:pl23}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.4.11] + handoff for PL-23
+\clearpage  
+% ------------------------------------------------------------
+\section{RF Data Converter}
+\label{sec:rfdc}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.5] + handoff
+%   - Existence of RFDC block may be stated (public IP)
+%   - Tile configuration parameters: NDA-IMPL — no detail without clearance
+
+\subsection{DAC: Tile 228}
+\label{subsec:dac_tile228}
+% [NDA-IMPL] — BLOCKED (RFDC-01)
+% TODO: Requires NDA CLEAR: IMPL [4.5.1] + handoff
+%   - Tile/channel configuration: NDA-IMPL
+%   - NCO, interpolation settings: NDA-IMPL
+
+\subsection{ADC: Tile 224}
+\label{subsec:adc_tile224}
+% [NDA-IMPL] — BLOCKED (RFDC-02)
+% TODO: Requires NDA CLEAR: IMPL [4.5.2] + handoff
+%   - Tile/channel configuration: NDA-IMPL
+\clearpage  
+% ------------------------------------------------------------
+\section{RF Front-End}
+\label{sec:rf_frontend}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.6] + handoff
+
+\subsection{TX Path}
+\label{subsec:rf_tx}
+% [NDA-IMPL] — BLOCKED (RF-01)
+% TODO: Requires NDA CLEAR: IMPL [4.6.1] + handoff
+%   - DAC balun + SMA TX path
+
+\subsection{RX Path}
+\label{subsec:rf_rx}
+% [NDA-IMPL] — BLOCKED (RF-02)
+% TODO: Requires NDA CLEAR: IMPL [4.6.2] + handoff
+%   - ADC balun + SMA RX path
+\clearpage  
+% ------------------------------------------------------------
+\section{Clocking Subsystem}
+\label{sec:clocking}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.7] + handoff
+%   - Clock chip existence may be stated (public component)
+%   - Register settings: NDA-IMPL — no detail without clearance
+
+\subsection{LMK04828}
+\label{subsec:lmk04828}
+% [NDA-IMPL] — BLOCKED (EXT-01)
+% TODO: Requires NDA CLEAR: IMPL [4.7.1] + handoff
+%   - Clock distribution chip — register configuration: NDA-IMPL
+
+\subsection{LMX2594}
+\label{subsec:lmx2594}
+% [NDA-IMPL] — BLOCKED (EXT-02)
+% TODO: Requires NDA CLEAR: IMPL [4.7.2] + handoff
+%   - PLL/VCO chip — register configuration: NDA-IMPL
+
+\subsection{xrfclk API}
+\label{subsec:xrfclk}
+% [NDA-IMPL] — BLOCKED (EXT-03)
+% TODO: Requires NDA CLEAR: IMPL [4.7.3] + handoff
+%   - Xilinx xrfclk Python API — usage detail: NDA-IMPL
+\clearpage  
+% ------------------------------------------------------------
+\section{Test and Measurement}
+\label{sec:test_measurement}
+% STATUS: OPEN — all subsections freely draftable from public specs
+% TODO: Section intro paragraph
+%   - Overview of test setup: source → DUT → sink + spectrum
+%   - Loopback topology description
+
+\subsection{H-Thunder-1 Reference Signal}
+\label{subsec:hthunder}
+% STATUS: OPEN — public product spec
+% TODO:
+%   - H-Thunder-1 J.83B / 256-QAM reference signal generator
+%   - Role: known-good J.83B signal source for RX validation
+%   - Public product specification detail
+%   - Cite product datasheet \cite{NEEDED} % [CITE NEEDED]
+
+\subsection{HDHomeRun: Source and Sink}
+\label{subsec:hdhomerun}
+% STATUS: OPEN — public product (EXT-04, EXT-05)
+% TODO:
+%   - HDHomeRun \#1 role: MPEG-TS source over GigE (TX path input)
+%   - HDHomeRun \#2 role: MPEG-TS sink over GigE (RX path output)
+%   - Public product — cite product page \cite{NEEDED} % [CITE NEEDED]
+
+\subsection{Spectrum Analysis}
+\label{subsec:spectrum_analysis}
+% STATUS: OPEN — general methodology
+% TODO:
+%   - Spectrum analyzer role in RF output validation
+%   - Measurements performed: channel power, spectral shape,
+%     occupied bandwidth, noise floor
+%   - General methodology — no proprietary test vector data
+\clearpage  
+% ------------------------------------------------------------
+\section{Verification and Results}
+\label{sec:verification}
+% [NDA-IMPL] — BLOCKED
+% TODO: Section intro requires NDA CLEAR: IMPL [4.9] + handoff
+%   - Stage map existence may be referenced (public README portion)
+%   - Test vector details: NDA-IMPL
+
+\subsection{Test Vectors}
+\label{subsec:test_vectors}
+% [NDA-IMPL] — BLOCKED (partially public stage map only)
+% TODO: Requires NDA CLEAR: IMPL [4.9.1] + handoff
+%   - Stage boundary file names (public): stage0–stage8
+%   - File formats (public): uint8 / int16 per stage
+%   - Internal content and mismatch analysis: NDA-IMPL
+
+\subsection{Loopback Validation}
+\label{subsec:loopback}
+% [NDA-IMPL] — BLOCKED
+% TODO: Requires NDA CLEAR: IMPL [4.9.2] + handoff
+%   - Loopback path topology (structural) may be described after clearance
+%   - BER / EVM / verification results: NDA-IMPL
