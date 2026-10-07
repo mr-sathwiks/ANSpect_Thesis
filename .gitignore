@@ -1,0 +1,17 @@
+# LaTeX generated files
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.dvi
+*.ps
+
+# Output PDF — optional, uncomment to exclude
+# main.pdf

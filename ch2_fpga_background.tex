@@ -307,6 +307,21 @@ fabric, the integrated \ac{rf} data converter, and the
 hardened \ac{sdfec} cores.
 Each is described in the sections that follow.
 
+% [ALT: Block diagram of the RFSoC 4x2 board showing the principal subsystems:
+%  ARM Cortex-A53/R5 Processing System, UltraScale+ Programmable Logic fabric,
+%  RF Data Converter tile array (DAC/ADC), SD-FEC hardened cores,
+%  DDR4 memory, and PYNQ software interface layer.]
+\begin{figure}[htbp]
+  \centering
+  % TODO: Replace placeholder path with final figure file before submission.
+  % Suggested filename: figures/ch2_rfsoc4x2_block.pdf
+  \includegraphics[width=0.85\textwidth]{figures/ch2_rfsoc4x2_block}
+  \caption{Block diagram of the RFSoC~4x2 board, showing the principal
+           hardware subsystems of the AMD Zynq~UltraScale+ ZU48DR
+           device~\cite{Kovacs2024}.}
+  \label{fig:rfsoc4x2_block}
+\end{figure}
+
 % ------------------------------------------------------------
 \subsection{Processing System: ARM Cortex-A53}
 \label{subsec:ps_arm}
@@ -399,6 +414,35 @@ control interfaces, and are integrated into the
 block design as described in
 Section~\ref{sec:vivado_background}~\cite{Kovacs2024}.
 
+Table~\ref{tab:zu48dr_resources} lists the available logic
+resource counts for the XCZU48DR device as specified
+in the product data sheet~\cite{AMD_DS889}.
+
+\begin{table}[htbp]
+  \caption{Available logic resources of the AMD Zynq~UltraScale+
+           XCZU48DR device~\cite{AMD_DS889}.}
+  \label{tab:zu48dr_resources}
+  \centering
+  \begin{tabular}{p{5.5cm}r}
+    \hline
+    Resource & Count \\
+    \hline
+    CLB Look-Up Tables (LUT6)    & 425{,}280 \\[3pt]
+    CLB Flip-Flops               & 850{,}560 \\[3pt]
+    DSP48E2 Slices               & 4{,}272   \\[3pt]
+    Block RAM (36\,Kb tiles)     & 1{,}080   \\[3pt]
+    UltraRAM (288\,Kb blocks)    & 80        \\[3pt]
+    Clock Management Tiles (CMT) & 8         \\[3pt]
+    High-Performance (HP) I/O    & 299       \\[3pt]
+    High-Density (HD) I/O        & 48        \\[3pt]
+    GTY Transceivers             & 16        \\[3pt]
+    SD-FEC Cores (hardened)      & 8         \\[3pt]
+    RF-ADC Channels (total)      & 8         \\[3pt]
+    RF-DAC Channels (total)      & 8         \\
+    \hline
+  \end{tabular}
+\end{table}
+
 \subsection{RF Data Converter: DAC/ADC Architecture}
 \label{subsec:rfdc_background}
 
@@ -413,10 +457,17 @@ sample clock distributed from an on-chip clock
 network~\cite{AMD_PG269}.
 
 \paragraph{RF-ADC:}
-The ZU48DR provides four accessible 14-bit \ac{rf}-\ac{adc}
-channels capable of sampling at up to 5\,\ac{gsps},
-with an analog input bandwidth extending to
-approximately 6\,GHz~\cite{Kovacs2024}.
+The ZU48DR integrates four \ac{rf}-\ac{adc} tiles
+(tiles 224--227), each containing two converter channels.
+Of these, two tiles are routed to board-accessible
+\ac{sma} connectors: Tile~224 provides channels~0 and~1
+(RF~ADC~A and RF~ADC~B) and Tile~226 provides channels~0
+and~1 (RF~ADC~C and RF~ADC~D), yielding four accessible
+14-bit \ac{rf}-\ac{adc} channels capable of sampling
+at up to 5\,\ac{gsps} with an analog input bandwidth
+extending to approximately 6\,GHz~\cite{Kovacs2024,AMD_PG269}.
+Tiles~225 and~227 are present on the die but are not
+connected to any board-level \ac{rf} interface.
 Each \ac{rf}-\ac{adc} channel incorporates a
 programmable \ac{ddc} block that performs digital
 downconversion from the \ac{rf} sample stream to
@@ -437,9 +488,16 @@ complex sample per transfer as a packed
 16-bit I and 16-bit Q integer pair~\cite{AMD_PG269}.
 
 \paragraph{RF-DAC:}
-The ZU48DR provides two accessible 14-bit \ac{rf}-\ac{dac}
-channels capable of operating at up to
-9.85\,\ac{gsps}~\cite{Kovacs2024}.
+The ZU48DR integrates four \ac{rf}-\ac{dac} tiles
+(tiles 228--231), each containing two converter channels.
+Of these, two blocks are routed to board-accessible
+\ac{sma} connectors: Tile~228 Block~0 (RF~DAC~A) and
+Tile~230 Block~0 (RF~DAC~B), yielding two accessible
+14-bit \ac{rf}-\ac{dac} channels capable of operating
+at up to 9.85\,\ac{gsps}~\cite{Kovacs2024}.
+Tile~228 Block~1, Tiles~229, 231, and Tile~230 Block~1
+are present on the die but are not connected to any
+board-level \ac{rf} interface.
 Each \ac{rf}-\ac{dac} channel incorporates a
 programmable \ac{duc} block that performs digital
 upconversion from a complex baseband \ac{iq} input
@@ -496,6 +554,56 @@ summarized in Table~\ref{tab:rfdc_params}.
                                  (16-bit I $+$ 16-bit Q)
                                & \ac{axi}4-Stream, 32-bit
                                  (16-bit I $+$ 16-bit Q) \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% [ALT: Table mapping all twelve RFDC converter blocks (eight ADC, four DAC)
+%  to their tile number, block index, board label, and SMA routing status
+%  on the RFSoC 4x2 board.]
+\begin{figure}[htbp]
+  \centering
+  % TODO: Replace placeholder path with final figure file before submission.
+  % Suggested filename: figures/ch2_rfdc_tile_map.pdf
+  \includegraphics[width=0.85\textwidth]{figures/ch2_rfdc_tile_map}
+  \caption{RFDC tile map of the AMD Zynq~UltraScale+ ZU48DR device
+           on the RFSoC~4x2 board, showing all \ac{rf}-\ac{adc} and
+           \ac{rf}-\ac{dac} tiles, their block indices, board-assigned
+           labels, and \ac{sma} routing
+           status~\cite{Kovacs2024,AMD_PG269}.}
+  \label{fig:rfdc_tile_map}
+\end{figure}
+
+Table~\ref{tab:rfdc_tile_map} enumerates all twelve
+converter blocks on the ZU48DR, their tile and block
+indices, board-assigned labels, and routing status
+on the RFSoC~4x2 board.
+
+\begin{table}[htbp]
+  \caption{RFDC tile and block map for the AMD Zynq~UltraScale+
+           ZU48DR on the RFSoC~4x2 board~\cite{Kovacs2024,AMD_PG269}.}
+  \label{tab:rfdc_tile_map}
+  \centering
+  \begin{tabular}{ccccl}
+    \hline
+    Type & Tile & Block & Board Label & Routed to SMA \\
+    \hline
+    RF-DAC & 228 & 0 & RF DAC A & Yes \\[2pt]
+    RF-DAC & 228 & 1 & ---       & No  \\[2pt]
+    RF-DAC & 229 & 0 & ---       & No  \\[2pt]
+    RF-DAC & 229 & 1 & ---       & No  \\[2pt]
+    RF-DAC & 230 & 0 & RF DAC B & Yes \\[2pt]
+    RF-DAC & 230 & 1 & ---       & No  \\[2pt]
+    RF-DAC & 231 & 0 & ---       & No  \\[2pt]
+    RF-DAC & 231 & 1 & ---       & No  \\[2pt]
+    RF-ADC & 224 & 0 & RF ADC A & Yes \\[2pt]
+    RF-ADC & 224 & 1 & RF ADC B & Yes \\[2pt]
+    RF-ADC & 225 & 0 & ---       & No  \\[2pt]
+    RF-ADC & 225 & 1 & ---       & No  \\[2pt]
+    RF-ADC & 226 & 0 & RF ADC C & Yes \\[2pt]
+    RF-ADC & 226 & 1 & RF ADC D & Yes \\[2pt]
+    RF-ADC & 227 & 0 & ---       & No  \\[2pt]
+    RF-ADC & 227 & 1 & ---       & No  \\
     \hline
   \end{tabular}
 \end{table}
@@ -1339,13 +1447,6 @@ constitute the complete \ac{pl} overlay deliverable
 of this thesis~\cite{PYNQ_DOC,Kovacs2024}.
 
 %\clearpage
-% ============================================================
-% §2.7  MATLAB-to-RTL Workflow
-% STATUS: EXPANDED — 30-Sep-2026
-% Sources: HDLCoder, proakis_dsp, Kovacs2024
-% NOTE: Add HDLCoder to references.bib — see entry below
-% ============================================================
-
 % ------------------------------------------------------------
 \section{MATLAB-to-RTL Workflow}
 \label{sec:matlab_rtl}
@@ -1372,7 +1473,7 @@ regardless of the generation method.
 \label{subsec:hdlcoder_intended}
 
 MathWorks HDL Coder is a toolbox that generates synthesizable
-VHDL or Verilog \ac{rtl} from MATLAB functions and Simulink
+\ac{vhdl} or Verilog \ac{rtl} from MATLAB functions and Simulink
 models~\cite{HDLCoder}.
 The generated \ac{rtl} is intended to be directly importable
 into an \ac{fpga} vendor toolchain such as Vivado, eliminating
@@ -1393,8 +1494,8 @@ SystemVerilog or VHDL netlist; package the generated \ac{rtl}
 as a Vivado \ac{ip} core per the flow described in
 Section~\ref{subsec:ip_packaging}; and integrate the packaged
 core into the top-level block design~\cite{HDLCoder}.
-The remaining three blocks - convolutional interleaver,
-the frame sync encoder, and the transport framing stage
+The remaining three blocks, namely the convolutional interleaver,
+the frame sync encoder, and the transport framing stage,
 were identified as candidates for manual \ac{rtl} coding due
 to their state-machine-intensive control structures.
 
@@ -1414,7 +1515,7 @@ fixed-point design step~\cite{HDLCoder}.
 \label{subsec:hdlcoder_limitations}
 
 Evaluation of HDL Coder against the five specified blocks
-revealed four categories of limitation that prevented the
+revealed three categories of limitation that prevented the
 generated \ac{rtl} from meeting the integration requirements
 of the Vivado block design flow described in
 Section~\ref{sec:vivado_background}.
@@ -1441,29 +1542,40 @@ for runtime configuration of processing parameters~\cite{HDLCoder}.
 Every block in the J.83B implementation that requires
 runtime parameter access, including the interleaver depth
 selector, the randomizer initialization trigger, and the
-frame sync detector threshold requires a hand-written
+frame sync detector threshold, requires a hand-written
 \ac{axi}4-Lite register file, making the HDL Coder output
 a partial solution that still requires substantial manual
-\ac{rtl} work to become a complete Vivado \ac{ip} core.
+\ac{rtl} work to become a complete Vivado \ac{ip}
+core~\cite{HDLCoder}.
 
-\paragraph{Fixed-Point Type Propagation:}
-The HDL Coder fixed-point conversion wizard failed to
-correctly propagate fixed-point types through the Galois
-field arithmetic required by the \ac{rs} encoder and the
-randomizer.
-Both blocks perform arithmetic over $\mathrm{GF}(2^7)$
-using custom reduction and multiplication operations whose
-semantics are not expressible as standard fixed-point
-scaling; the wizard either over-widened intermediate words
-to preserve headroom not needed in a field of
-characteristic~2, or produced type mismatches at reduction
-steps that required manual override of every inferred type.
+\paragraph{Core Datapath Output Only:}
+HDL Coder generates \ac{rtl} for the core combinational
+or pipelined arithmetic datapath of a block
+but does not generate the surrounding
+infrastructure required for integration into a Vivado
+\ac{ip} core~\cite{HDLCoder}.
+The generated output omits the finite-state machine that
+sequences data through multi-cycle operations, the control
+logic that manages pipeline enable, flush, and stall
+conditions, the \ac{axi}4-Stream handshake wrapper that
+connects the datapath to the streaming pipeline, and the
+\ac{axi}4-Lite register file that exposes runtime
+configuration parameters to the \ac{ps}~\cite{HDLCoder}.
+Each of these components must be written manually and
+integrated around the generated datapath core before the
+block constitutes a complete, integration-ready Vivado
+\ac{ip} core.
+For the J.83B processing blocks, the control logic and
+state machine complexity was comparable to the datapath
+complexity, so the net \ac{rtl} coding effort saved by
+HDL Coder was marginal relative to a fully manual
+implementation.
 
 % ------------------------------------------------------------
 \subsection{Decision: Manual RTL Coding}
 \label{subsec:manual_rtl_decision}
 
-The four limitation categories described in
+The three limitation categories described in
 Section~\ref{subsec:hdlcoder_limitations} collectively
 established that HDL Coder could not produce
 integration-ready \ac{rtl} for the J.83B processing blocks
@@ -1474,8 +1586,8 @@ HDL Coder path and implement all \ac{pl} modules as
 hand-coded SystemVerilog.
 
 \paragraph{RTL Language and Interface Standard:}
-All eight J.83B processing blocks and their supporting
-infrastructure are implemented in SystemVerilog, with
+All J.83B processing blocks and their supporting
+infrastructure except Vivado \ac{ip} are implemented in SystemVerilog, with
 native \ac{axi}4-Stream data interfaces and \ac{axi}4-Lite
 control interfaces coded directly to the \ac{amba}
 specification described in Section~\ref{sec:axi}.
@@ -1505,8 +1617,7 @@ of \ac{axi}4-Stream pipeline integration, and the
 transition to manual SystemVerilog constitute a validated
 engineering methodology contribution of this thesis.
 The decision is grounded in the specific interface
-requirements of the Vivado \ac{ip} Integrator flow and the
-Galois field arithmetic requirements of the J.83B standard,
+requirements of the Vivado \ac{ip} Integrator flow,
 providing a documented rationale that is transferable to
 similar \ac{rfsoc} development projects.
 Implementation detail for each \ac{rtl} module is deferred
@@ -1569,10 +1680,9 @@ fixed-point scaling: all elements are 7-bit integers
 and multiplication is defined by the field reduction
 rule, not by binary multiplication followed by
 shift~\cite{proakis_dsp}.
-This structural incompatibility with the HDL Coder
-fixed-point type system, described in
-Section~\ref{subsec:hdlcoder_limitations}, was the
-primary driver of the decision to implement these
-blocks in manually coded SystemVerilog.
+This structural incompatibility with the HDL Coder output model
+described in Section~\ref{subsec:hdlcoder_limitations} reinforced
+the decision to implement these blocks in manually coded
+SystemVerilog.
 
 \clearpage
