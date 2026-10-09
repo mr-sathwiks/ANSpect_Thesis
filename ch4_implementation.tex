@@ -1212,7 +1212,7 @@ eight-bit-multiple requirement.
   \caption{PL-07 trellis encoder module interface.}
   \label{tab:pl07_interface}
   \centering
-  \begin{tabular}{lllll}
+  \begin{tabular}{p{2.2cm}p{0.5cm}p{0.7cm}p{2.0cm}p{6.8cm}}
     \hline
     Port & Dir & Width & Protocol & Description \\
     \hline
@@ -1222,19 +1222,15 @@ eight-bit-multiple requirement.
                                                                [39:38] = \texttt{2'b00} pad \\[2pt]
     \texttt{s\_axi\_tvalid} & in  & 1  & \ac{axi}4-S slave  & Source valid \\[2pt]
     \texttt{s\_axi\_tready} & out & 1  & \ac{axi}4-S slave  & High in \texttt{IDLE} and
-                                                               \texttt{SYNC\_ACCUM};
-                                                               combinational \\[2pt]
-    \texttt{s\_axi\_tlast}  & in  & 1  & \ac{axi}4-S slave  & Asserted on group~2{,}075
-                                                               only \\[2pt]
+                                                               \texttt{SYNC\_ACCUM}; combinational \\[2pt]
+    \texttt{s\_axi\_tlast}  & in  & 1  & \ac{axi}4-S slave  & Asserted on group~2{,}075 only \\[2pt]
     \texttt{m\_axi\_tdata}  & out & 40 & \ac{axi}4-S master & 5~$\times$~8-bit C-words;
-                                                               sym[0] at [7:0],
-                                                               sym[4] at [39:32];
+                                                               sym[0] at [7:0], sym[4] at [39:32];
                                                                registered \\[2pt]
     \texttt{m\_axi\_tvalid} & out & 1  & \ac{axi}4-S master & Registered \\[2pt]
     \texttt{m\_axi\_tready} & in  & 1  & \ac{axi}4-S master & Downstream ready \\[2pt]
     \texttt{m\_axi\_tlast}  & out & 1  & \ac{axi}4-S master & Registered; asserted on
-                                                               final output of each
-                                                               \ac{fec} frame \\[2pt]
+                                                               final output of each \ac{fec} frame \\[2pt]
     \hline
   \end{tabular}
 \end{table}
