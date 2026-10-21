@@ -1449,10 +1449,254 @@ confirmed \ac{rom} synthesis correctness, with the
 recovered C-word stream matching the MATLAB reference
 \texttt{stage6\_trellis\_cwords.bin} on hardware.
 
+% ============================================================
+% ch4_implementation.tex — §4.3.8 PL-08: QAM256 Mapper
+% Source: PL-08_QAM256_MAP_handoff.md v2.4 13-Aug-2026
+% NDA CLEAR: IMPL [4.3] received 07-Oct-2026
+% STATUS: EXPANDED
+% ============================================================
+
 \subsection{PL-08: QAM-256 Mapper}
 \label{subsec:pl08}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.8] + handoff for PL-08
+
+The \ac{qam256} mapper module (PL-08) implements the symbol
+constellation mapping stage specified in \S~B.5.5.5 of the
+standard~\cite{ITU_J83}, as described algorithmically in
+Section~\ref{sec:qam256}.
+It accepts the packed five-C-word bundles produced by the
+trellis encoder (PL-07) and delivers the corresponding
+complex \ac{iq} constellation coordinates to the \ac{srrc}
+pulse shaping filter (PL-09) as 32-bit fixed-point
+\ac{axi}4-Stream words.
+Each input bundle contains five 8-bit C-words, one per
+\ac{qam256} symbol, and the module produces five output
+\ac{iq} pairs per bundle by serializing through a
+256-entry \ac{iq} lookup table one symbol per clock cycle.
+The module is self-contained in SystemVerilog with no
+sub-module or Vivado \ac{ip} dependencies and is packaged
+as a Vivado \ac{ip} core.
+
+\paragraph{Interface:}
+The port list is summarized in Table~\ref{tab:pl08_interface}.
+The \texttt{m\_axi\_tdata} output is registered, providing
+a stable output to PL-09 under backpressure.
+The \texttt{s\_axi\_tready} signal is combinational and
+follows a two-state gating scheme described under the \ac{fsm}
+discussion below.
+The module forwards \texttt{TLAST}: \texttt{m\_axi\_tlast}
+is asserted on the fifth output symbol of the final bundle
+of each \ac{fec} frame and is gated combinationally as
+\texttt{out\_valid\_r \&\& out\_tlast\_r} to prevent
+spurious assertion during inter-frame idle gaps.
+
+\begin{table}[htbp]
+  \caption{PL-08 \ac{qam256} mapper module interface.}
+  \label{tab:pl08_interface}
+  \centering
+  \begin{tabular}{p{2.2cm}p{0.5cm}p{0.7cm}p{2.0cm}p{6.8cm}}
+    \hline
+    Port & Dir & Width & Protocol & Description \\
+    \hline
+    \texttt{clk}            & in  & 1  & Clock            & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in  & 1  & Reset            & Synchronous, active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in  & 40 & \ac{axi}4-S slave  & 5~$\times$~8-bit C-words;
+                                                               sym[0] at [7:0],
+                                                               sym[4] at [39:32] \\[2pt]
+    \texttt{s\_axi\_tvalid} & in  & 1  & \ac{axi}4-S slave  & Source valid \\[2pt]
+    \texttt{s\_axi\_tready} & out & 1  & \ac{axi}4-S slave  & Combinational; see text \\[2pt]
+    \texttt{s\_axi\_tlast}  & in  & 1  & \ac{axi}4-S slave  & Asserted on final bundle
+                                                               of each \ac{fec} frame \\[2pt]
+    \texttt{m\_axi\_tdata}  & out & 32 & \ac{axi}4-S master & \texttt{\{Q\_fix16[31:16],
+                                                               I\_fix16[15:0]\}};
+                                                               fix16\_0, $S = 24{,}972$;
+                                                               registered \\[2pt]
+    \texttt{m\_axi\_tvalid} & out & 1  & \ac{axi}4-S master & Registered hold register \\[2pt]
+    \texttt{m\_axi\_tready} & in  & 1  & \ac{axi}4-S master & Downstream ready \\[2pt]
+    \texttt{m\_axi\_tlast}  & out & 1  & \ac{axi}4-S master & Combinational:
+                                                               \texttt{out\_valid\_r \&\&
+                                                               out\_tlast\_r} \\[2pt]
+    \hline
+  \end{tabular}
+\end{table}
+
+The \texttt{m\_axi\_tdata} word packs the fixed-point
+quadrature component in bits~[31:16] and the in-phase
+component in bits~[15:0], matching the input format
+expected by PL-09.
+
+\paragraph{IQ Mapping Algorithm:}
+Each 8-bit C-word value in the range 0--255 directly
+addresses a 256-entry read-only lookup table
+\texttt{IQ\_ROM} that returns the pre-computed complex
+\ac{iq} coordinates of the corresponding \ac{qam256}
+constellation point defined by Figure~B.19 of the
+standard~\cite{ITU_J83}.
+The \ac{iq} coordinates are stored as 16-bit
+fixed-point signed integers in the \texttt{fix16\_0}
+format (no fractional bits) with a scale factor
+$S = 24{,}972$, derived from the normalization
+$\mathrm{level}/\sqrt{170} \times S$ applied to the
+odd-integer amplitude levels
+$\{-15,\,-13,\,\ldots,\,+13,\,+15\}$~\cite{ITU_J83}.
+The maximum absolute value of any \ac{iq} coordinate
+is 28{,}729, which fits within the 16-bit signed
+range of $[-32{,}768,\,+32{,}767]$ with headroom.
+Each 32-bit \texttt{IQ\_ROM} entry packs
+\texttt{Q\_fix16} in bits~[31:16] and
+\texttt{I\_fix16} in bits~[15:0].
+
+The five C-words of each input bundle are serialized
+one per clock cycle by a three-bit drain counter
+\texttt{drain\_cnt\_r} that advances from 0 to 4.
+On each drain step, the current C-word is extracted
+from the latched copy \texttt{tdata\_lat\_r} as
+\texttt{tdata\_lat\_r[drain\_cnt\_r~$\times$~8~+:~8]},
+used to index \texttt{IQ\_ROM}, and the result is
+registered into the output register \texttt{iq\_out\_r}.
+Both \texttt{s\_axi\_tdata} and \texttt{s\_axi\_tlast}
+are latched into \texttt{tdata\_lat\_r} and
+\texttt{tlast\_lat\_r} at the input handshake, ensuring
+that the drain phase reads a stable copy regardless of
+upstream signal changes after the handshake.
+
+\paragraph{Finite-State Machine:}
+The module is governed by a two-state \ac{fsm}
+summarized in Table~\ref{tab:pl08_fsm}.
+
+\begin{table}[htbp]
+  \caption{PL-08 \ac{qam256} mapper \ac{fsm} state summary.}
+  \label{tab:pl08_fsm}
+  \centering
+  \begin{tabular}{p{1.8cm}p{5.2cm}p{6.4cm}}
+    \hline
+    State & Entry Condition & Behaviour \\
+    \hline
+    \texttt{IDLE}
+      & Reset; or \texttt{DRAIN} final symbol consumed
+        with no new bundle arriving
+      & Awaits input handshake; \texttt{s\_tready}
+        $=\; \neg\texttt{out\_valid\_r}
+        \;\|\; \texttt{m\_tready}$ —
+        blocks new bundle while sym[4] of prior
+        bundle remains pending downstream \\[4pt]
+    \texttt{DRAIN}
+      & \texttt{IDLE}: input handshake
+      & Serializes five \ac{iq} lookups,
+        one per clock; \texttt{s\_tready} asserted
+        only on \texttt{final\_capture\_this\_cycle}
+        (the exact cycle sym[4] is captured into
+        \texttt{iq\_out\_r}); back-to-back bundles
+        handled by \texttt{drain\_continue} without
+        returning to \texttt{IDLE} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+In the \texttt{DRAIN} state, \texttt{s\_axi\_tready} is
+asserted only on \texttt{final\_capture\_this\_cycle}
+$=$ \texttt{output\_en \&\& last\_symbol\_done}, not
+for the entire window during which the drain counter
+is at its maximum value.
+This distinction is required because downstream
+backpressure can hold \texttt{out\_valid\_r} high
+after \texttt{drain\_cnt\_r} reaches its maximum,
+preventing \texttt{output\_en} from firing; admitting
+a new bundle in this window would overwrite
+\texttt{tdata\_lat\_r} before sym[4] had been
+captured.
+The output valid register \texttt{out\_valid\_r}
+operates as a hold register: it is set on
+\texttt{output\_en} and cleared only on
+\texttt{output\_handshake}, decoupling output
+availability from drain counter state and preventing
+\texttt{m\_tvalid} oscillation during downstream stalls.
+
+The two-clock pipeline latency from input handshake to
+first \texttt{m\_tvalid} assertion decomposes as:
+cycle~0, the input handshake triggers \texttt{IDLE}~$\to$~\texttt{DRAIN}
+and the registered state updates; cycle~1, \texttt{drain\_en}
+fires from \texttt{!out\_valid\_r} and captures sym[0]
+into \texttt{iq\_out\_r} with \texttt{out\_valid\_r}~$= 1$;
+cycle~2, \texttt{m\_tvalid}~$= 1$ and \texttt{m\_tdata}
+is valid for downstream sampling.
+
+\paragraph{ROM Implementation:}
+The \texttt{IQ\_ROM} is a 256$\times$32-bit table stored
+in \texttt{iq\_rom.mem} and loaded via \texttt{\$readmemh}.
+The table carries the \texttt{rom\_style = "distributed"}
+synthesis attribute.
+Vivado~2024.2 maps the read-only, write-port-free
+\ac{rom} to combinational \ac{lut} logic rather than
+\ac{lut}-\ac{ram}, producing zero \texttt{LUT as Memory}
+utilization in the placed report.
+The \texttt{iq\_rom.mem} file is generated offline by
+the MATLAB script \texttt{write\_qam\_rom.m} from the
+\ac{qam256} constellation table \texttt{j83b\_const256.mat}.
+Correct synthesis consumption of \texttt{iq\_rom.mem}
+was confirmed from the Vivado synthesis log, which
+reported successful \texttt{\$readmemh} file read
+at synthesis elaboration.
+
+\paragraph{Resource Utilization:}
+Post-implementation resource utilization for the
+250\,MHz design run is summarized in
+Table~\ref{tab:pl08_utilization}.
+No \ac{bram} and no DSP48E2 slices are instantiated.
+The 79~\acp{ff} correspond exactly to the registered
+state inventory: the 1-bit \ac{fsm} state, the 3-bit
+drain counter, the 40-bit input latch
+\texttt{tdata\_lat\_r}, the 1-bit \texttt{tlast\_lat\_r},
+the 32-bit output register \texttt{iq\_out\_r}, the
+1-bit \texttt{out\_valid\_r}, and the 1-bit
+\texttt{out\_tlast\_r}.
+
+\begin{table}[htbp]
+  \caption{PL-08 \ac{qam256} mapper post-implementation
+           resource utilization (250\,MHz, XCZU48DR, Vivado~2024.2).}
+  \label{tab:pl08_utilization}
+  \centering
+  \begin{tabular}{lrrr}
+    \hline
+    Resource & Used & Available & Utilization (\%) \\
+    \hline
+    \ac{lut}    & 73 & 425{,}280 & 0.02 \\[2pt]
+    \ac{ff}     & 79 & 850{,}560 & ${<}0.01$ \\[2pt]
+    BRAM        & 0  & 1{,}080   & 0.00 \\[2pt]
+    DSP48E2     & 0  & 4{,}272   & 0.00 \\[2pt]
+    UltraRAM    & 0  & 80        & 0.00 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The module meets timing at 250\,MHz with a worst negative
+slack of $+2.302$\,ns, corresponding to an estimated
+maximum operating frequency of approximately 589\,MHz.
+
+\paragraph{Verification:}
+The module was verified in simulation against 27~checks
+in the simple testbench and 35~checks in the master
+testbench, with zero failures in both and all \ac{sva}
+assertions clean throughout.
+The test suite covers a full 41{,}520-pair golden vector
+sweep across four \ac{fec} frames against the
+MATLAB-generated fixed-point reference files
+(\texttt{stage6\_trellis\_cwords.bin}~$\to$
+\texttt{stage7\_fxp\_real\_i16.bin},
+\texttt{stage7\_fxp\_imag\_i16.bin}), which encode the
+\ac{iq} coordinates as \texttt{int16} values at scale
+$S = 24{,}972$; \ac{fsm} state transitions and drain
+counter sequencing; output validity and \texttt{TLAST}
+timing across four frame boundaries; backpressure
+behavior including \texttt{s\_tready} gating in
+\texttt{IDLE} with a pending sym[4] and exact-capture-cycle
+gating in \texttt{DRAIN}; back-to-back bundle continuity
+at frame boundaries via the \texttt{drain\_continue}
+path; and reset recovery at both \ac{fsm} states.
+Eight continuously active \ac{sva} assertions enforce
+output stability under stall, input stability while
+\texttt{s\_tready}~$= 0$, \texttt{m\_tlast} assertion
+only with \texttt{m\_tvalid}, drain counter range,
+and absence of unknown states.
 
 \subsection{PL-09: SRRC FIR TX}
 \label{subsec:pl09}
