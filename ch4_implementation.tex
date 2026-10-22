@@ -975,12 +975,478 @@ The bitfile was evaluated at 100\,MHz; production operation targets
 250\,MHz, confirmed by post-implementation timing at
 $F_{\max} \geq 416$\,MHz~(Table~\ref{tab:pl03_timing}).
 
-\clearpage
+%\clearpage
+
+% ============================================================
+% CH-4.3.4  PL-04: INTERLEAVER
+% Source : PL-04_INTERLEAVER_handoff.md v2.0  14-Jul-2026
+%          interleaver.sv v2.0
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.4 [PL-04] — PASS  22-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [OMITTED — author]
+% Expanded  : 22-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+%   Structure: §3 Operating Phases → §4 Memory Resources → §5 RTL Architecture
+%   (per PL-03 precedent; no explicit FSM — replaced by Operating Phases)
+% ============================================================
 
 \subsection{PL-04: Convolutional Interleaver}
 \label{subsec:pl04}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.4] + handoff for PL-04
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The convolutional interleaver module (PL-04) implements the Ramsey
+Type~III convolutional interleaving stage of the J.83B Annex~B transmit
+chain, specified in \S\,B.5.2 of the standard~\cite{ITU_J83}.
+The algorithmic background — branch structure, delay assignment, and burst
+error dispersal properties — is presented in
+Section~\ref{sec:interleaving}; this section covers its hardware
+realization.
+The module is hand-coded SystemVerilog (\texttt{interleaver.sv},
+revision~v2.0), operates as an \ac{axi}4-Stream slave-to-master pair at
+the 250\,MHz \ac{pl} fabric clock, and carries a testbench status of
+TB-PASS (24/24 checks, 0 failures).
+Figure~\ref{fig:pl04_pipeline} shows its position in the transmit chain:
+the left block is the Reed-Solomon encoder (PL-03), which supplies
+\ac{rs}-encoded bytes; the right block is the randomizer (PL-05), which
+receives the interleaved output.
+The two 8-bit \ac{axi}4-Stream arrows indicate that the byte width is
+unchanged through the stage — the interleaver reorders bytes in time but
+does not alter their content or packing.
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal row.
+%       Left block: PL-03 RS_ENC. Centre block (highlighted green): PL-04
+%       INTERLEAVER. Right block: PL-05 RANDOMIZER. Arrows between blocks
+%       are labeled 8-bit AXI-S. A 250 MHz PL clock label appears below
+%       the chain; no CDC marker at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/ch4/ch4_pl04_pipeline}
+  \caption{Pipeline position of PL-04 \texttt{interleaver} in the J.83B
+           Annex~B transmit chain.}
+  \label{fig:pl04_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl04_ip_block} shows the \texttt{interleaver} core as it
+appears in the Vivado \ac{ip} Integrator block canvas.
+The \texttt{s\_axi} slave group on the left receives the byte stream from
+PL-03; the \texttt{m\_axi} master group on the right drives PL-05.
+Two ports carry combinational signals that differ from prior modules in
+the chain: \texttt{s\_axi\_tready} is a direct combinational function
+of \texttt{m\_axi\_tready} and \texttt{init\_done}, and
+\texttt{m\_axi\_tdata} is driven combinationally from either the \ac{bram}
+read port or a passthrough register, with no registered output stage.
+The port list is given in Table~\ref{tab:pl04_ports}.
+
+% [ALT: Screenshot of the interleaver IP core in Vivado IP Integrator.
+%       The block is labeled interleaver with the subtitle J.83B
+%       Convolutional Interleaver (PL-04) (Pre-Production). On the left
+%       side the s_axi slave interface group shows ports s_axi_tdata[7:0],
+%       s_axi_tvalid, and s_axi_tready. Control ports clk and rst_n appear
+%       below. On the right side the m_axi master interface group shows
+%       ports m_axi_tdata[7:0], m_axi_tvalid, and m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl04_ip_block}
+  \caption{PL-04 \texttt{interleaver} packaged as a Vivado \ac{ip} core in
+           \ac{ip} Integrator, showing the \texttt{s\_axi} slave and
+           \texttt{m\_axi} master interface groups.}
+  \label{fig:pl04_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-04 \texttt{interleaver} port list.}
+  \label{tab:pl04_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock                  & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset                  & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 8     & \ac{axi}4-Stream slave & \ac{rs}-encoded byte from PL-03; bit~7 always 0 \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave & Combinational: \texttt{m\_tready \&\ init\_done} \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 8     & \ac{axi}4-Stream master & Interleaved byte to PL-05; bit~7 always 0 \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master & Downstream data valid \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master & Downstream backpressure \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  OPERATING PHASES
+% ------------------------------------------------------------------
+
+\paragraph{Operating Phases.}
+
+Unlike PL-02 and PL-03, which use explicit multi-state \acp{fsm},
+PL-04 operates as a two-phase linear sequence controlled by a single
+\texttt{init\_done} flag.
+The two phases exist because the Ramsey Type~III algorithm requires all
+128 \ac{bram} delay \acp{fifo} to be pre-initialised to zero before any
+byte can be correctly interleaved~\cite{ITU_J83}: a fresh-reset \ac{bram}
+may contain arbitrary data, and the MATLAB reference model initialises all
+delay slots to zero before processing the first byte.
+
+\textit{INIT phase (\texttt{!init\_done}) — zero the delay lines.}
+Immediately after reset, the module blocks upstream data by holding
+\texttt{s\_axi\_tready} low and sequentially writes \texttt{0x00} to
+every one of the 8{,}128 \ac{bram} addresses, one address per clock cycle.
+Once the final address is written, the \texttt{init\_done} flag is set
+and the module transitions permanently to the ACTIVE phase.
+This zero-fill takes 8{,}128--8{,}132 clock cycles depending on reset
+synchroniser pipeline timing; upstream PL-03 must not assume
+\texttt{s\_tready} will be asserted at any fixed cycle after reset.
+
+\textit{ACTIVE phase (\texttt{init\_done}) — route bytes through branches.}
+Once initialised, the module accepts one byte per input handshake and
+routes it through one of 128 delay branches.
+A 7-bit counter \texttt{branch\_cnt} cycles $0 \to 1 \to \cdots \to 127
+\to 0$ on every accepted byte, assigning each successive byte to the
+next branch in sequence.
+Branch~0 is a direct passthrough with zero delay.
+Each branch~$b$ from~1 to~127 introduces a delay of exactly $b$~bytes via
+a circular \ac{bram} \ac{fifo} of depth~$b$; the incoming byte is written
+to the \ac{fifo} head and the byte that entered $b$~handshakes ago is read
+out and forwarded downstream.
+This progressive delay is what disperses burst channel errors across
+multiple Reed-Solomon blocks at the receiver~\cite{ITU_J83}.
+
+The single-bit \texttt{s0\_valid} flag tracks whether a byte is currently
+in the 1-cycle \ac{bram} pipeline.
+It is set on every accepted byte and cleared when the downstream module
+consumes the output with no new byte simultaneously entering.
+During downstream stalls, \texttt{s0\_valid} holds its value and
+\texttt{m\_axi\_tvalid} remains asserted, keeping the output stable.
+
+Table~\ref{tab:pl04_phases} summarises the handshake signal values in
+each phase.
+
+\begin{table}[htbp]
+  \caption{PL-04 operating phase summary.}
+  \label{tab:pl04_phases}
+  \centering
+  \begin{tabular}{lllp{8.0cm}}
+    \hline
+    Phase  & \texttt{s\_axi\_tready} & \texttt{m\_axi\_tvalid} & Task \\
+    \hline
+    INIT   & \texttt{0}              & \texttt{0}
+           & Zero-filling all 8{,}128 \ac{bram} delay slots before
+             accepting any data (8{,}128--8{,}132 cycles) \\[4pt]
+    ACTIVE & \texttt{m\_axi\_tready} & \texttt{s0\_valid}
+           & Routing bytes through the 128-branch delay network;
+             full backpressure propagation \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+In the ACTIVE phase, \texttt{s\_axi\_tready} is a direct combinational
+tie to \texttt{m\_axi\_tready} (gated by \texttt{init\_done}) with no
+elastic buffer between the \ac{bram} output and the \ac{axi}4-Stream
+output.
+Downstream backpressure propagates immediately to PL-03: asserting
+\texttt{m\_axi\_tready}~$= 0$ stalls the upstream port within the same
+clock cycle.
+This design is acceptable because PL-03 holds its output stable during
+all emit phases and can tolerate an indefinite \texttt{s\_tready}
+deassertion.
+
+% ------------------------------------------------------------------
+% §4  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\paragraph{Memory Resources.}
+
+The 128-branch delay network requires
+$\sum_{b=1}^{127} b = \tfrac{127 \times 128}{2} = 8{,}128$~bytes of
+on-chip storage~\cite{ITU_J83}.
+This is provided by the \texttt{conv\_interleaver\_bram} Vivado Block
+Memory Generator \ac{ip} instance, configured as a Simple Dual-Port
+\ac{ram}: Port~A is the write port and Port~B is the read port, both
+sharing the same address every cycle.
+Unlike the distributed \acp{rom} used in PL-03, this \ac{bram} holds no
+fixed content — its data is defined entirely at runtime by the INIT phase
+zero-fill and continuously updated by the streaming interleave algorithm.
+Table~\ref{tab:pl04_bram} lists the \ac{ip} configuration.
+
+\begin{table}[htbp]
+  \caption{PL-04 \texttt{conv\_interleaver\_bram} \ac{ip} configuration.}
+  \label{tab:pl04_bram}
+  \centering
+  \small
+  \begin{tabular}{ll}
+    \hline
+    Parameter              & Value \\
+    \hline
+    \ac{ip} core           & Vivado Block Memory Generator \\[2pt]
+    Memory type            & Simple Dual-Port \ac{ram} \\[2pt]
+    Data width             & 8~bits (both ports) \\[2pt]
+    Depth                  & 8{,}128 entries (both ports) \\[2pt]
+    Port~A mode            & Read First (write port; \texttt{ENA} pin enabled) \\[2pt]
+    Port~B mode            & Read First (read port; \texttt{ENB} pin enabled) \\[2pt]
+    Output registers       & None (1-cycle read latency) \\[2pt]
+    \ac{bram} primitives   & 2$\times$ RAMB36E2 \\[2pt]
+    Initialisation         & Zero-filled by INIT phase post-reset \\[2pt]
+    Runtime content        & Circular delay \ac{fifo} data; no fixed \ac{rom} content \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+The READ\_FIRST mode on both ports is a functional requirement of the
+algorithm.
+Since Port~A and Port~B are driven to the same address each cycle, the
+\ac{bram} must guarantee that Port~B reads the pre-write value — the
+oldest byte in that branch's delay \ac{fifo} — while Port~A
+simultaneously writes the new incoming byte to that slot~\cite{ITU_J83}.
+READ\_FIRST provides exactly this guarantee, implementing the correct
+read-before-write \ac{fifo} head semantics.
+
+% ------------------------------------------------------------------
+% §5  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl04_datapath — omitted by author]
+
+With the operating phases and memory resources established, this section
+describes how each phase's task is realized in hardware.
+
+\textit{Bit~7 preservation.}
+Bit~7 of all input bytes is guaranteed zero by PL-03.
+The \ac{bram} stores and retrieves the full 8-bit byte without masking,
+and the output mux passes bytes through unchanged, so the zero in bit~7
+is preserved on every output symbol.
+
+\textit{INIT phase hardware.}
+A 13-bit counter \texttt{init\_addr} increments every clock cycle while
+\texttt{!init\_done}, driving both \texttt{addra} and \texttt{addrb}
+simultaneously with \texttt{dina}~$= \texttt{0x00}$,
+\texttt{ena}~$=$ \texttt{wea}~$= 1$.
+When \texttt{init\_addr} reaches~8{,}127, the \texttt{init\_done} flag is
+set by a synchronous-set flip-flop (\texttt{FDSE}), and the counter ceases
+to increment.
+
+\textit{ACTIVE phase hardware — branch addressing.}
+The 7-bit \texttt{branch\_cnt} register advances on every input handshake,
+cycling $0 \to 127 \to 0$.
+For each branch~$b$, the flat \ac{bram} address is computed as
+$\mathtt{base\_addr}(b) + \mathtt{wptr}[b]$, where
+$\mathtt{base\_addr}(b) = b(b-1)/2$ is a pure combinational function
+synthesized by Vivado as a CARRY8 adder tree (10$\times$ CARRY8 cells),
+and \texttt{wptr[b]} is the 7-bit circular pointer for branch~$b$,
+ranging from~0 to~$b-1$ and wrapping at $b-1$.
+The 128 write-pointer registers $\texttt{wptr[0:127]}$
+($128 \times 7 = 896$ flip-flops) are the dominant register resource.
+Their 128-to-1 selection into the address path is synthesized as a
+MUXF7/MUXF8 cascade (119 and 56 cells respectively), which forms the
+critical timing path at 250\,MHz: a setup path of approximately 5--7
+logic levels from the \texttt{wptr[]} registers through the CARRY8
+adder and \ac{mux} tree to the \ac{bram} address input, yielding a
+worst negative slack of $+0.385$\,ns and an estimated $F_{\max}$ of
+approximately 276.6\,MHz.
+
+\textit{ACTIVE phase hardware — BRAM access and output mux.}
+For branches 1--127, both \texttt{ena} and \texttt{enb} are gated on
+\texttt{input\_handshake}~\texttt{\&\&}~\texttt{(branch\_cnt}~$\neq$~\texttt{0)}.
+Gating \texttt{enb} on the input handshake is a correctness requirement:
+if \texttt{enb} were always asserted, the \ac{bram} would issue a read
+on the next branch address during any downstream stall cycle, overwriting
+\texttt{dout\_bram} with the wrong data before the stalled output was
+consumed.
+By gating \texttt{enb} on \texttt{input\_handshake}, \texttt{dout\_bram}
+is frozen between handshakes and \texttt{m\_axi\_tdata} remains stable
+throughout any stall, satisfying the \ac{axi}4-Stream data-stability
+requirement~\cite{ARM_IHI0022}.
+The output mux selects between these two paths combinationally:
+
+\begin{equation}
+  \mathtt{m\_axi\_tdata} =
+  \begin{cases}
+    \mathtt{s\_axi\_tdata\_d1} & \text{if } \mathtt{branch\_cnt\_d1} = 0 \\
+    \mathtt{dout\_bram}        & \text{otherwise}
+  \end{cases}
+  \label{eq:interleaver_mux}
+\end{equation}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-03 \ac{rs} encoder):}
+\begin{itemize}
+  \item Input bytes carry 7-bit \ac{rs}-encoded symbols with bit~7
+        guaranteed zero by PL-03; this property is preserved
+        throughout~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tready} is deasserted for 8{,}128--8{,}132 clock
+        cycles after every reset during the \ac{bram} initialisation
+        window.
+        Upstream PL-03 must not assume \texttt{s\_tready} is asserted at
+        any fixed cycle after reset.
+  \item In the ACTIVE phase, \texttt{s\_axi\_tready} tracks
+        \texttt{m\_axi\_tready} directly with no elastic buffer.
+        Upstream must hold \texttt{s\_axi\_tvalid} and
+        \texttt{s\_axi\_tdata} stable whenever
+        \texttt{s\_axi\_tready}~$= 0$~\cite{ARM_IHI0022}.
+  \item No \texttt{tlast} signal is used.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-05 randomizer):}
+\begin{itemize}
+  \item One interleaved byte is emitted per accepted input byte.
+        Bit~7 is always zero.
+  \item The output latency from input handshake to first valid output byte
+        is exactly 1~clock cycle, equal to the \ac{bram} read latency.
+  \item \texttt{m\_axi\_tdata} is combinational; downstream must sample
+        on the rising clock edge coincident with
+        \texttt{m\_axi\_tvalid}~\texttt{\&\&}~\texttt{m\_axi\_tready}.
+  \item During downstream stalls, \texttt{m\_axi\_tdata} and
+        \texttt{m\_axi\_tvalid} remain stable because \texttt{dout\_bram}
+        is frozen by the handshake gate and \texttt{s0\_valid} holds its
+        registered value, satisfying the \ac{axi}4-Stream stability
+        requirement~\cite{ARM_IHI0022}.
+  \item No \texttt{tlast} signal is generated.
+\end{itemize}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-04 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 14~Jul~2026; values from
+           250\,MHz run).}
+  \label{tab:pl04_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used  & Available  & Utilization \\
+    \hline
+    \ac{lut6}    &  530  & 425{,}280  & 0.12\%      \\[2pt]
+    \ac{ff}      &  942  & 850{,}560  & 0.11\%      \\[2pt]
+    \ac{bram}36  &    2  & 1{,}080    & 0.19\%      \\[2pt]
+    CARRY8       &   10  & N/A        & N/A          \\[2pt]
+    MUXF7        &  119  & N/A        & N/A          \\[2pt]
+    MUXF8        &   56  & N/A        & N/A          \\[2pt]
+    \ac{dsp}     &    0  & 4{,}272    & 0.00\%      \\[2pt]
+    UltraRAM     &    0  & 80         & 0.00\%      \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-04 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 14~Jul~2026).}
+  \label{tab:pl04_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                   & 250\,MHz             & 100\,MHz           \\
+    \hline
+    WNS, setup               & $+0.385$\,ns (MET)   & $+5.418$\,ns (MET) \\[2pt]
+    WHS, hold                & $+0.055$\,ns (MET)   & $+0.055$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$         & $\approx 276.6$\,MHz & $\approx 218$\,MHz  \\[2pt]
+    Failing endpoints        & 0                    & 0                  \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used a 45{,}056-byte golden vector sweep against
+the MATLAB reference model \texttt{j83b\_interleaver.m} at full streaming
+rate, under 30\% output backpressure, and under combined 20\% input and
+output throttling, confirming bit-exact agreement across all three
+throughput conditions.
+Reset recovery was verified mid-\ac{bram}-initialisation, after three
+consecutive resets, and at mid-stream (300~bytes into a transfer),
+confirming that all \texttt{wptr[]} registers and \texttt{s0\_valid} return
+to zero after every reset regardless of prior operational state.
+Boundary-length streams of 1, 128, 129, and 8{,}129~bytes verified the
+branch-0 passthrough path, a complete 128-branch cycle, and full \ac{bram}
+capacity traversal.
+Deterministic backpressure patterns including 50-cycle output stalls, 50\%
+\texttt{m\_tready} toggle, and periodic input gaps confirmed lossless
+operation under all stall conditions.
+\ac{axi}4-Stream \ac{sva} checks confirmed \texttt{s\_axi\_tready} remains
+low for the full \ac{bram} initialisation window, no X-propagation on
+\texttt{m\_tdata} while \texttt{m\_tvalid}, and data-valid stability under
+backpressure — zero \ac{sva} fires across all 24 checks.
+
+Integration testing in the PL-02$\to$PL-04 chain confirmed that
+\texttt{branch\_cnt} does not advance during the 5-cycle RS encoder Horner
+stall, consistent with \texttt{branch\_cnt} being strictly
+handshake-driven, across 385~RS blocks with zero violations.
+The \ac{bram} initialisation window was measured at 8{,}128--8{,}132 cycles
+across 24 reset scenarios.
+End-to-end testing in the PL-02$\to$PL-06 chain confirmed 8{,}304/8{,}304
+trellis groups bit-exact against the stage~5 golden reference with zero
+\ac{sva} fires.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-04 hardware validation summary.}
+  \label{tab:pl04_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \path{pl_2_6.bit}\\(PL-02$\to$PL-06 chain)
+      & 100\,MHz
+      & PYNQ \ac{dma} loopback~\cite{PYNQ_DOC}; output compared
+        to \path{stage5_framesync_bits.bin}
+      & 8{,}304/8{,}304 groups bit-exact; \ac{bram} interleave
+        confirmed through full chain
+      & 28-Jul-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-04 was performed indirectly as part of the
+PL-02$\to$PL-06 transmit chain.
+Bit-exact agreement at the PL-06 output across 8{,}304 trellis groups
+confirms correct interleaving including \ac{bram} initialisation,
+branch cycling, and circular pointer management.
+The bitfile was evaluated at 100\,MHz; production operation targets
+250\,MHz, confirmed by post-implementation timing at
+$F_{\max} \approx 276.6$\,MHz~(Table~\ref{tab:pl04_timing}).
+
+\clearpage
 
 \subsection{PL-05: Randomizer}
 \label{subsec:pl05}
