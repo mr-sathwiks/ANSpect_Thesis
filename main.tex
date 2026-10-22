@@ -24,6 +24,7 @@
 %                    glossaries loads AFTER hyperref (pkg requirement — not a UTD violation)
 % v1.4  02-Sep-2026  Removed toc option from glossaries pkg
 %                    utdthesis.cls auto-generates TOC entry — toc option caused duplicate
+% v1.5  21-Oct-2026  Added placeins pkg — \FloatBarrier for CH-4 float ordering
 % ============================================================
 
 \documentclass[doublespacing]{utdthesis}
@@ -38,6 +39,7 @@
 \usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage{url}
+\usepackage{placeins}           % float barriers — CH-4 section ordering
 \usepackage{microtype}
 \usepackage{rotating}           % sidewaystable only
 \usepackage[numbers]{natbib}
