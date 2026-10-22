@@ -1446,12 +1446,435 @@ The bitfile was evaluated at 100\,MHz; production operation targets
 250\,MHz, confirmed by post-implementation timing at
 $F_{\max} \approx 276.6$\,MHz~(Table~\ref{tab:pl04_timing}).
 
-\clearpage
+%\clearpage
+
+% ============================================================
+% CH-4.3.5  PL-05: RANDOMIZER
+% Source : PL-05_RANDOMIZER_handoff.md v2.0  19-Jul-2026
+%          randomizer.sv v2.0
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.5 [PL-05] — PASS  22-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [OMITTED — author]
+% Expanded  : 22-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+%   Structure: §3 Streaming Operation → §4 Memory Resources → §5 RTL Architecture
+%   (no FSM, no operating phases — simplest module in TX chain)
+% ROM attribution: ANSpect J.83B reference implementation
+% ============================================================
 
 \subsection{PL-05: Randomizer}
 \label{subsec:pl05}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.5] + handoff for PL-05
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The randomizer module (PL-05) implements the \ac{pn} sequence scrambling
+stage of the J.83B Annex~B transmit chain, specified in \S\,B.5.4 of the
+standard~\cite{ITU_J83}.
+The algorithmic background — the \ac{gf}(128) recurrence, sequence period,
+and spectral whitening function — is presented in
+Section~\ref{sec:randomization}; this section covers its hardware
+realization.
+The module is hand-coded SystemVerilog (\texttt{randomizer.sv},
+revision~v2.0), operates as an \ac{axi}4-Stream slave-to-master pair at
+the 250\,MHz \ac{pl} fabric clock, and carries a testbench status of
+TB-PASS (60/60 checks, 0 failures).
+Unlike PL-02 through PL-04, the randomizer contains no \ac{fsm}, no
+initialisation window, and no operating phases — it is ready to accept
+and produce data the cycle after reset is released.
+Figure~\ref{fig:pl05_pipeline} shows its position in the transmit chain:
+PL-04 INTERLEAVER on the left supplies the interleaved byte stream; PL-06
+FRAME\_SYNC\_ENC on the right receives the randomized output.
+Both connections carry 8-bit \ac{axi}4-Stream at the 250\,MHz \ac{pl}
+clock with no clock domain crossing at either boundary.
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal row.
+%       Left block: PL-04 INTERLEAVER. Centre block (highlighted green):
+%       PL-05 RANDOMIZER. Right block: PL-06 FRAME_SYNC_ENC. Arrows between
+%       blocks are labeled 8-bit AXI-S. A 250 MHz PL clock label appears
+%       below the chain; no CDC marker at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/ch4/ch4_pl05_pipeline}
+  \caption{Pipeline position of PL-05 \texttt{randomizer} in the J.83B
+           Annex~B transmit chain.}
+  \label{fig:pl05_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl05_ip_block} shows the \texttt{randomizer} core as
+packaged in Vivado \ac{ip} Integrator.
+The \texttt{s\_axi} slave group on the left receives the interleaved
+byte stream from PL-04; the \texttt{m\_axi} master group on the right
+drives PL-06.
+The simplicity of the block reflects the module's streaming-only design:
+no additional control ports, sub-module instances, or configuration
+registers appear.
+The port list is given in Table~\ref{tab:pl05_ports}.
+
+% [ALT: Screenshot of the randomizer IP core in Vivado IP Integrator.
+%       The block is labeled randomizer with the subtitle J.83B Randomizer
+%       (PL-05) (Pre-Production). On the left side the s_axi slave
+%       interface group shows ports s_axi_tdata[7:0], s_axi_tvalid, and
+%       s_axi_tready. Control ports clk and rst_n appear below. On the
+%       right side the m_axi master interface group shows ports
+%       m_axi_tdata[7:0], m_axi_tvalid, and m_axi_tready. No other ports
+%       or sub-blocks are visible.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl05_ip_block}
+  \caption{PL-05 \texttt{randomizer} packaged as a Vivado \ac{ip} core in
+           \ac{ip} Integrator, showing the \texttt{s\_axi} slave and
+           \texttt{m\_axi} master interface groups.}
+  \label{fig:pl05_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-05 \texttt{randomizer} port list.}
+  \label{tab:pl05_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock                  & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset                  & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 8     & \ac{axi}4-Stream slave & Interleaved byte from PL-04; bit~7 always 0 \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave & Direct wire: \texttt{= m\_axi\_tready} \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 8     & \ac{axi}4-Stream master & Randomized byte to PL-06; bit~7 always 0 \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master & Direct wire: \texttt{= s\_axi\_tvalid} \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master & Downstream backpressure \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  STREAMING OPERATION
+% ------------------------------------------------------------------
+
+\paragraph{Streaming Operation.}
+
+PL-05 has no \ac{fsm}, no operating phases, and no initialisation window.
+All output signals are combinational functions of the current inputs and
+the \ac{pn} sequence counter \texttt{sym\_cnt}.
+The module is ready to accept and produce data the cycle after
+\texttt{rst\_n} is released — there is no delay comparable to PL-04's
+8{,}128-cycle \ac{bram} init window.
+
+The core operation is a single bitwise XOR applied to every accepted
+symbol:
+
+\begin{equation}
+  \mathtt{m\_axi\_tdata} =
+  \left\{
+    \texttt{1'b0},\;
+    \mathtt{s\_axi\_tdata}[6:0] \oplus
+    \mathtt{rseq\_rom}[\mathtt{sym\_cnt}]
+  \right\}
+  \label{eq:randomizer_xor}
+\end{equation}
+
+\noindent where \texttt{rseq\_rom[sym\_cnt]} is the precomputed
+\ac{gf}(128) \ac{pn} sequence entry at the current symbol position.
+Bit~7 of the output is hardwired to \texttt{1'b0}; all arithmetic
+operates on the 7-bit symbol field.
+
+The counter \texttt{sym\_cnt} advances by~1 on every input handshake,
+cycling from~0 to~11{,}263 and wrapping to~0~\cite{ITU_J83}.
+During downstream stalls or upstream valid gaps (such as the 5-cycle
+Horner stall from PL-03), \texttt{sym\_cnt} freezes: no symbol is
+accepted, no counter step occurs, and the \ac{pn} sequence position is
+preserved exactly.
+Backpressure propagates as a direct wire in both directions:
+\texttt{s\_axi\_tready} is tied to \texttt{m\_axi\_tready} with no
+gating, and \texttt{m\_axi\_tvalid} mirrors \texttt{s\_axi\_tvalid} with
+zero latency.
+
+Table~\ref{tab:pl05_signals} summarises all output signal assignments,
+which apply uniformly at all times after reset.
+
+\begin{table}[htbp]
+  \caption{PL-05 output signal assignments (all times after reset).}
+  \label{tab:pl05_signals}
+  \centering
+  \small
+  \begin{tabular}{p{3.0cm}p{6.0cm}lp{3.0cm}}
+    \hline
+    Signal                       & Value                                                          & Type          & Notes \\
+    \hline
+    \texttt{s\_axi\_tready}      & \texttt{m\_axi\_tready}                                        & Direct wire   & No gating; no init window \\[2pt]
+    \texttt{m\_axi\_tvalid}      & \texttt{s\_axi\_tvalid}                                        & Direct wire   & Zero-latency mirror \\[2pt]
+    \texttt{m\_axi\_tdata[7]}    & \texttt{1'b0}                                                  & Constant      & Bit~7 always zero \\[2pt]
+    \texttt{m\_axi\_tdata[6:0]}  & \texttt{s\_tdata[6:0]}~$\oplus$~\texttt{rseq\_rom[sym\_cnt]}  & Combinational & Core \ac{pn} XOR \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §4  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\paragraph{Memory Resources.}
+
+The \ac{pn} sequence is stored as a 11{,}264-entry, 7-bit-wide
+read-only table \texttt{RSEQ\_ROM}, synthesized entirely as distributed
+\ac{lut} logic.
+The \texttt{rom\_style = "distributed"} synthesis attribute, combined with
+an asynchronous (unregistered) read port, causes Vivado to infer
+combinational \ac{lut} logic rather than \ac{lut}-\ac{ram} or
+\ac{bram}.
+Post-implementation confirms no \ac{bram} and no \ac{lut} as memory
+usage: the 11{,}264 entries are fully decoded by a MUXF7/MUXF8 cascade
+(644 and 322 cells respectively).
+The \ac{rom} content was pre-computed offline using the ANSpect J.83B
+reference implementation~\cite{ITU_J83}, with \texttt{write\_rseq\_rom.m}
+generating the $\mathrm{GF}(128)$ \ac{pn} sequence and writing it to
+\texttt{rseq\_rom.mem}.
+Table~\ref{tab:pl05_rom} lists the \ac{rom} parameters.
+
+\begin{table}[htbp]
+  \caption{PL-05 \texttt{RSEQ\_ROM} configuration.}
+  \label{tab:pl05_rom}
+  \centering
+  \small
+  \begin{tabular}{p{3.5cm}p{11.5cm}}
+    \hline
+    Parameter              & Value \\
+    \hline
+    Depth $\times$ Width   & $11{,}264 \times 7$~bits (78{,}848~bits total) \\[2pt]
+    Content                & $\mathrm{GF}(128)$ \ac{pn} sequence,
+                             $f(x) = x^3 + x + \alpha^3$,
+                             $p(x) = x^7 + x^3 + 1$,
+                             initial state $c_2 = c_1 = c_0 = \texttt{0x7F}$ \\[2pt]
+    Period                 & 11{,}264 symbols ($88 \times 128$, 256-QAM mode)~\cite{ITU_J83} \\[2pt]
+    Synthesis              & Distributed \ac{lut} logic + MUXF7/MUXF8; NOT \ac{bram}, NOT \ac{lut}-RAM \\[2pt]
+    Address                & \texttt{sym\_cnt[13:0]} (14-bit, combinational read) \\[2pt]
+    Source file            & \texttt{rseq\_rom.mem} \\[2pt]
+    Generator              & \texttt{write\_rseq\_rom.m} via ANSpect J.83B reference implementation \\[2pt]
+    Verification           & 11{,}264/11{,}264 entries confirmed \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §5  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl05_datapath — omitted by author]
+
+With the streaming operation and memory resources established, this section
+describes their hardware realization.
+
+\textit{sym\_cnt counter.}
+The only registered element is the 14-bit counter \texttt{sym\_cnt[13:0]},
+implemented as 14~logical flip-flops in the \ac{rtl}.
+Because \texttt{sym\_cnt} addresses all 11{,}264 entries of
+\texttt{RSEQ\_ROM}, each bit drives 1{,}358~\acp{lut}, producing a
+high-fanout net on every counter bit.
+Vivado automatically replicates \texttt{sym\_cnt} approximately 3.9 times
+during implementation, yielding 54~\texttt{FDRE} primitives in the placed
+netlist, to distribute the load across slices without routing congestion.
+No \ac{rtl} change was required; the replication is a synthesis artifact.
+The resulting critical timing path at 250\,MHz is route-dominated:
+\texttt{sym\_cnt\_reg\_rep[13]} $\to$ LUT3 $\to$ LUT6 $\to$ \ac{ff}
+reset pin, with 89.1\% of the 2.565\,ns total data delay attributable
+to routing, yielding a worst negative slack of $+1.236$\,ns and an
+estimated $F_{\max}$ of approximately 361.8\,MHz.
+
+\textit{XOR datapath and output assignments.}
+The XOR of \texttt{s\_axi\_tdata[6:0]} and \texttt{rseq\_rom[sym\_cnt]}
+is purely combinational, resolving in the same clock cycle as the input.
+Bit~7 of the output is hardwired to \texttt{1'b0} via the
+\texttt{\{1'b0, ...\}} concatenation, preserving the 7-bit symbol
+constraint imposed by PL-03~\cite{ITU_J83}.
+\texttt{s\_axi\_tready} and \texttt{m\_axi\_tvalid} are single
+\texttt{assign} statements with no logic gates — direct electrical
+connections.
+
+\textit{Combinational output boundary.}
+\texttt{m\_axi\_tdata} is combinational: the output resolves in the same
+cycle as input with zero pipeline latency.
+This design means the combinational path from PL-04's \ac{bram} output
+through PL-05's XOR gate continues into PL-06's input, crossing two
+module boundaries without a registered cut.
+Standalone timing at 250\,MHz closed with $+1.236$\,ns margin.
+System-level functional correctness through the PL-04$\to$PL-05$\to$PL-06
+boundary was confirmed in integration simulation and on board~\cite{PYNQ_DOC}.
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-04 interleaver):}
+\begin{itemize}
+  \item Input bytes carry 7-bit interleaved symbols with bit~7 guaranteed
+        zero by PL-03/PL-04; this property is preserved
+        throughout~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tready} is a direct wire to \texttt{m\_axi\_tready}
+        with no gating.
+        Unlike PL-04, there is no initialisation window — the module is
+        ready to accept data the cycle after \texttt{rst\_n} is released.
+  \item Upstream must hold \texttt{s\_axi\_tvalid} and \texttt{s\_axi\_tdata}
+        stable whenever \texttt{s\_axi\_tready}~$= 0$~\cite{ARM_IHI0022}.
+        PL-04 satisfies this through its own emit-phase buffering.
+  \item PL-03 Horner stall gaps (\texttt{tvalid}~$= 0$, 5~cycles) pass
+        through PL-04 to PL-05.
+        \texttt{sym\_cnt} freezes during these gaps; no symbol is skipped
+        or duplicated.
+  \item No \texttt{tlast} signal is used.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-06 frame sync encoder):}
+\begin{itemize}
+  \item One randomized byte is emitted per accepted input byte.
+        Bit~7 is always zero.
+  \item Zero pipeline latency: \texttt{m\_axi\_tdata} is valid in the
+        same cycle as the input handshake.
+        Downstream must sample on the rising clock edge when
+        \texttt{m\_axi\_tvalid} and \texttt{m\_axi\_tready} are both
+        asserted simultaneously.
+  \item \texttt{m\_axi\_tvalid} is a direct wire to \texttt{s\_axi\_tvalid}.
+        During upstream valid gaps, \texttt{m\_axi\_tvalid}~$= 0$ and
+        \texttt{m\_axi\_tdata} is undefined; downstream must not sample
+        during these periods.
+  \item If upstream drives \texttt{s\_axi\_tvalid}~$= 1$ while
+        \texttt{rst\_n}~$= 0$, \texttt{m\_axi\_tvalid}~$= 1$ may assert.
+        \texttt{sym\_cnt} does not advance during reset.
+        Downstream PL-06 must gate sampling on \texttt{rst\_n}.
+  \item Backpressure is fully propagated:
+        \texttt{m\_axi\_tready}~$= 0$ stalls upstream immediately via
+        the direct \texttt{s\_axi\_tready} wire~\cite{ARM_IHI0022}.
+  \item No \texttt{tlast} signal is generated.
+\end{itemize}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-05 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 19~Jul~2026).}
+  \label{tab:pl05_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used    & Available  & Utilization \\
+    \hline
+    \ac{lut6}    & 1{,}358 & 425{,}280  & 0.32\%      \\[2pt]
+    \ac{ff}      &      54 & 850{,}560  & $<0.01$\%   \\[2pt]
+    MUXF7        &     644 & N/A        & N/A          \\[2pt]
+    MUXF8        &     322 & N/A        & N/A          \\[2pt]
+    \ac{bram}    &       0 & 1{,}080    & 0.00\%      \\[2pt]
+    \ac{dsp}     &       0 & 4{,}272    & 0.00\%      \\[2pt]
+    UltraRAM     &       0 & 80         & 0.00\%      \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-05 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 19~Jul~2026).}
+  \label{tab:pl05_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                   & 250\,MHz             & 100\,MHz           \\
+    \hline
+    WNS, setup               & $+1.236$\,ns (MET)   & $+5.365$\,ns (MET) \\[2pt]
+    WHS, hold                & $+0.060$\,ns (MET)   & $+0.065$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$         & $\approx 361.8$\,MHz & $\approx 216$\,MHz  \\[2pt]
+    Failing endpoints        & 0                    & 0                  \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification confirmed the XOR datapath against hand-traced
+\ac{gf}(128) \ac{pn} sequence values at selected offsets, a full
+11{,}264-entry range sweep confirming all values in the range
+\texttt{0x00}--\texttt{0x7F}, and the self-inverse property — applying
+the XOR twice with the same \texttt{sym\_cnt} offset recovers the
+original input exactly.
+The 45{,}056-byte golden vector sweep was run at full rate, under 30\%
+output backpressure, with 20\% input gaps, and under combined input
+and output throttling, confirming bit-exact agreement in all four
+conditions.
+Counter behavior was verified across all boundary conditions: freeze
+during \texttt{tready}~$= 0$ and \texttt{tvalid}~$= 0$ stalls, wrap
+from 11{,}263 to~0, mid-stream reset returning \texttt{sym\_cnt} to~0,
+and counter hold throughout a reset with \texttt{tvalid}~$= 1$ asserted.
+Seven \ac{axi}4-Stream \ac{sva} checks — including direct-wire
+verification of \texttt{s\_tready}~$=$~\texttt{m\_tready} and
+\texttt{m\_tvalid}~$=$~\texttt{s\_tvalid}, bit~7 zero invariant, and
+counter-gate correctness — fired zero violations across all 60 checks.
+
+Integration testing in the PL-02$\to$PL-06 chain confirmed \ac{pn}
+sequence wrap from position~11{,}263 to~0 at the chain level, correct
+passthrough of PL-03 Horner stall gaps with no \texttt{sym\_cnt}
+advancement, and 8{,}304/8{,}304 trellis groups bit-exact across all
+throttle, backpressure, reset, and data pattern scenarios.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-05 hardware validation summary.}
+  \label{tab:pl05_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \path{pl_2_6.bit}\\(PL-02$\to$PL-06 chain)
+      & 100\,MHz
+      & PYNQ \ac{dma} loopback~\cite{PYNQ_DOC}; output compared
+        to \path{stage5_framesync_bits.bin}
+      & 8{,}304/8{,}304 groups bit-exact; \ac{pn} sequence correctness
+        confirmed
+      & 28-Jul-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-05 was performed indirectly as part of the
+PL-02$\to$PL-06 transmit chain.
+Bit-exact agreement at the PL-06 output across 8{,}304 trellis groups
+confirms correct \ac{pn} sequence generation, XOR application, bit~7
+suppression, and counter wrap behavior.
+The bitfile was evaluated at 100\,MHz; production operation targets
+250\,MHz, confirmed by post-implementation timing at
+$F_{\max} \approx 361.8$\,MHz~(Table~\ref{tab:pl05_timing}).
+
+%\clearpage
 
 \subsection{PL-06: Frame Sync Encoder}
 \label{subsec:pl06}
