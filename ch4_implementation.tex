@@ -78,15 +78,904 @@
 % [NDA-IMPL] — BLOCKED
 % TODO: Requires NDA CLEAR: IMPL [4.3.1] + handoff for PL-01
 
+% ============================================================
+% CH-4.3.2  PL-02: TRANSPORT_FRAMING
+% Source : PL-02_TRANSPORT_FRAMING_handoff.md v2.1  09-Jul-2026
+%          transport_framing.sv v2.1
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.2 [PL-02] — PASS  21-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [OMITTED — author]  IMG-4 [x]  IMG-5 [x]
+% Expanded  : 21-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+% ============================================================
+
 \subsection{PL-02: Transport Framing}
 \label{subsec:pl02}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.2] + handoff for PL-02
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The transport framing module (PL-02) implements the \ac{mpegts} packet
+framing stage of the J.83B Annex~B transmit chain, specified in
+\S\,B.4 of the standard~\cite{ITU_J83}.
+The algorithmic background for this stage is described in
+Section~\ref{sec:j83b_standard}; this section covers its hardware
+realization.
+The module is hand-coded SystemVerilog (\texttt{transport\_framing.sv},
+revision~v2.1), operates as an \ac{axi}4-Stream slave-to-master pair at
+the 250\,MHz \ac{pl} fabric clock, and carries a testbench status of
+TB-PASS (174{,}777 checks, 0 failures).
+Its position in the transmit chain is shown in
+Figure~\ref{fig:pl02_pipeline}.
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal
+%       row. Left block: PL-01 AXI DMA MM2S. Centre block (highlighted
+%       green): PL-02 TRANSPORT_FRAMING. Right block: PL-03 RS_ENC.
+%       Arrows between blocks are labeled 8-bit AXI-S. A 250 MHz PL
+%       clock label appears below the chain; no CDC marker is present
+%       at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/ch4/ch4_pl02_pipeline}
+  \caption{Pipeline position of PL-02 \texttt{transport\_framing} in the
+           J.83B Annex~B transmit chain.}
+  \label{fig:pl02_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\paragraph{Interface.}
+
+% [ALT: Screenshot of the transport_framing IP core in Vivado IP
+%       Integrator. The block is labelled transport_framing with the
+%       subtitle J.83B Transport Framing (PL-02) (Pre-Production).
+%       On the left side the s_axi slave interface group shows ports
+%       s_axi_tdata[7:0], s_axi_tvalid, and s_axi_tready. Control
+%       ports clk and rst_n appear below the interface group. On the
+%       right side the m_axi master interface group shows ports
+%       m_axi_tdata[7:0], m_axi_tvalid, and m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl02_ip_block}
+  \caption{PL-02 \texttt{transport\_framing} packaged as a Vivado \ac{ip}
+           core in \ac{ip} Integrator, showing the \texttt{s\_axi} slave
+           and \texttt{m\_axi} master interface groups.}
+  \label{fig:pl02_ip_block}
+\end{figure}
+
+\FloatBarrier 
+
+\begin{table}[htbp]
+  \caption{PL-02 \texttt{transport\_framing} port list.}
+  \label{tab:pl02_ports}
+  \centering
+  \begin{tabular}{llcll}
+    \hline
+    Port                    & Dir  & Width & Protocol              & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock                 & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset                 & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 8     & \ac{axi}4-Stream slave  & \ac{mpegts} byte stream from PL-01 \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave  & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave  & Upstream backpressure \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 8     & \ac{axi}4-Stream master & Framed byte stream to PL-03 \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master & Downstream data valid \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master & Downstream backpressure \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl02_datapath — omitted by author]
+
+The module is organized as a two-block combinational datapath driving a
+set of registered state elements, with an output mux controlled by the
+\ac{fsm} state described in the following section.
+Registered state consists of five elements: the 2-bit \ac{fsm} state,
+an 8-bit byte counter (\texttt{byte\_cnt}), three 8-bit \ac{lfsr}
+registers (\texttt{r1}, \texttt{r2}, \texttt{r3}), an 8-bit
+\texttt{first7} capture register, and an 8-bit \texttt{checksum}
+register.
+Registers \texttt{r2} and \texttt{r3} are initialized to
+\texttt{0x00} per the J.83B §B.4 specification and are never
+subsequently updated~\cite{ITU_J83}; they are retained in the
+\ac{rtl} for algorithmic traceability.
+
+The \texttt{ph1\_lfsr\_chain} block implements the 8-step bit-serial
+Phase~1 \ac{lfsr} computation as a fully unrolled
+\texttt{always\_comb} loop, producing \texttt{r1\_ph1\_next} and
+\texttt{first7\_next} every clock cycle.
+Results are latched into \texttt{r1} and \texttt{first7} only on an
+input handshake event while in \texttt{PH\_ONE}.
+The \texttt{ph2\_lookup\_and\_drain} block executes unconditionally every
+cycle, computing both the Phase~2 table-lookup result
+(\texttt{r1\_ph2\_next}) and the full 8-step Phase~3 drain chain
+(\texttt{checksum\_next}).
+The drain result is latched into the \texttt{checksum} register only when
+\texttt{byte\_cnt}~$\geq 187$ in \texttt{PH\_TWO}.
+Running the drain chain unconditionally on every cycle simplifies control
+logic at the cost of switching activity on the 186 non-drain cycles per
+packet; this is a deferred power optimization with no functional impact.
+
+\texttt{m\_axi\_tdata} is driven by a state-selected combinational mux:
+it carries \texttt{checksum} in \texttt{PH\_THREE} and passes
+\texttt{s\_axi\_tdata} through combinationally in all other states.
+\texttt{s\_axi\_tready} is a priority conditional assignment that returns
+\texttt{0} in \texttt{PH\_THREE}, \texttt{1} in \texttt{PH\_SYNC}, and
+\texttt{m\_axi\_tready} otherwise.
+Post-implementation timing analysis confirmed that the combinational
+\texttt{s\_axi\_tready} path through \texttt{m\_axi\_tready} meets the
+250\,MHz constraint with a worst negative slack of
+$+2.687$\,ns~(Table~\ref{tab:pl02_timing}), so no registered pipeline
+cut was introduced.
+
+% ------------------------------------------------------------------
+% §4  FSM
+% ------------------------------------------------------------------
+
+\paragraph{FSM.}
+The four-state \ac{fsm} maps directly onto the three-phase checksum
+computation.
+Figure~\ref{fig:pl02_fsm} shows the state transition diagram;
+Table~\ref{tab:pl02_fsm} gives the handshake signal values per state.
+
+% [ALT: State transition diagram with four circular states. PH_SYNC(0)
+%       is at top-left, PH_ONE(1) at top-right, PH_TWO(2) at
+%       bottom-right, and PH_THREE(3) at bottom-left, arranged in a
+%       clockwise cycle. Transition arcs are labeled: PH_SYNC to
+%       PH_ONE on input_hs and tdata==0x47; PH_SYNC self-loop on
+%       input_hs and tdata!=0x47; PH_ONE to PH_TWO on input_hs;
+%       PH_TWO self-loop on input_hs and byte_cnt<187; PH_TWO to
+%       PH_THREE on input_hs and byte_cnt>=187; PH_THREE to PH_SYNC
+%       on output_hs. Each state bubble shows its s_tready and
+%       m_tvalid values. A reset arc enters PH_SYNC from above.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\linewidth]{figures/ch4/ch4_pl02_fsm}
+  \caption{PL-02 \ac{fsm} state transition diagram.
+           \texttt{input\_hs}:\ \texttt{s\_axi\_tvalid \&\ s\_axi\_tready};
+           \texttt{output\_hs}:\ \texttt{m\_axi\_tvalid \&\ m\_axi\_tready}.}
+  \label{fig:pl02_fsm}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-02 \ac{fsm} handshake signal matrix.}
+  \label{tab:pl02_fsm}
+  \centering
+  \begin{tabular}{llll}
+    \hline
+    State              & \texttt{s\_axi\_tready}   & \texttt{m\_axi\_tvalid}   & Notes \\
+    \hline
+    \texttt{PH\_SYNC}  & \texttt{1} (forced)       & \texttt{0}                & Sync hunt; no output \\[2pt]
+    \texttt{PH\_ONE}   & \texttt{m\_axi\_tready}   & \texttt{s\_axi\_tvalid}   & Phase~1; backpressure passthrough \\[2pt]
+    \texttt{PH\_TWO}   & \texttt{m\_axi\_tready}   & \texttt{s\_axi\_tvalid}   & Phase~2; backpressure passthrough \\[2pt]
+    \texttt{PH\_THREE} & \texttt{0} (forced)       & \texttt{1} (forced)       & Input stalled; checksum byte driven \\
+    \hline
+  \end{tabular}
+\end{table}
+
+In \texttt{PH\_SYNC}, \texttt{s\_axi\_tready} is forced high
+unconditionally, decoupled from \texttt{m\_axi\_tready} (revision~v2.1).
+This decoupling resolves a cold-boot deadlock in which the module waited
+for \ac{rs} encoder readiness before accepting the first \texttt{0x47}
+byte, while the \ac{rs} encoder simultaneously awaited valid input data —
+a circular stall with no external resolution.
+Since \texttt{PH\_SYNC} produces no output (\texttt{m\_axi\_tvalid}~$= 0$),
+downstream readiness is irrelevant in this state and the decoupling is
+unconditional.
+
+% ------------------------------------------------------------------
+% §5  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\paragraph{Memory Resources.}
+Two 256-entry read-only tables support the Phase~2 and Phase~3 checksum
+computation.
+Both are pre-computed offline using the ANSpect J.83B reference
+implementation~\cite{ITU_J83}, with the generator script
+\texttt{write\_transport\_framing\_roms.m} extracting and writing
+the tables to \texttt{.mem} format, and loaded at simulation time via \texttt{\$readmemh}.
+The \texttt{rom\_style = "distributed"} synthesis attribute directs
+Vivado~2024.2 to constant-fold both tables into combinational \ac{lut}
+logic; no \ac{bram} primitive is inferred.
+Table~\ref{tab:pl02_roms} lists the ROM parameters.
+
+\begin{table}[htbp]
+  \caption{PL-02 ROM configuration.}
+  \label{tab:pl02_roms}
+  \centering
+  \small
+  \begin{tabular}{llllcc}
+    \hline
+    ROM                  & Depth$\times$Width  & Synthesis    & Content                         & Verified & Source file \\
+    \hline
+    \texttt{CRC\_ROM}    & $256 \times 8$      & Distributed  & Phase~2 CRC table (\texttt{pCrc[]})    & 256/256  & \texttt{crc\_rom.mem} \\[2pt]
+    \texttt{BITREV\_ROM} & $256 \times 8$      & Distributed  & Bit-reversal table (\texttt{pBit[]})   & 256/256  & \texttt{bitrev\_rom.mem} \\
+    \hline
+    \multicolumn{6}{l}{\small Combined \ac{lut} cost: 64 \acp{lut} total (both ROMs + all RTL logic; constant-folded, Vivado~2024.2)} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-01 \ac{axi} \ac{dma} MM2S):}
+\begin{itemize}
+  \item Every packet must begin with the \ac{mpegts} sync byte
+        \texttt{0x47}~\cite{ITU_J83}.
+        Bytes received before the first \texttt{0x47} are consumed and
+        discarded in \texttt{PH\_SYNC}.
+  \item \texttt{s\_axi\_tready} is state-dependent: forced high in
+        \texttt{PH\_SYNC}; equal to \texttt{m\_axi\_tready} in
+        \texttt{PH\_ONE} and \texttt{PH\_TWO}; forced low in
+        \texttt{PH\_THREE}.
+        The upstream source must tolerate 1-cycle
+        \texttt{s\_axi\_tready} deassertions at each
+        \texttt{PH\_SYNC}$\to$\texttt{PH\_ONE} packet boundary
+        (confirmed in integration testbench: 250~deassertions
+        in a 250-packet transfer).
+  \item No \texttt{tlast} signal is used.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-03 \ac{rs} encoder):}
+\begin{itemize}
+  \item Exactly 188 bytes are emitted per input packet:
+        \texttt{payload[0..186]} followed by one checksum byte.
+        The \texttt{0x47} sync byte is consumed and not forwarded.
+  \item \texttt{m\_axi\_tvalid} is suppressed during \texttt{PH\_SYNC},
+        preventing spurious transfers to the \ac{rs} encoder during
+        sync hunt.
+        In \texttt{PH\_THREE}, \texttt{m\_axi\_tvalid} is forced high
+        regardless of upstream state.
+  \item Back-to-back packet operation is supported with no idle gap:
+        the \texttt{PH\_THREE}$\to$\texttt{PH\_SYNC} transition occurs
+        on the output handshake of the checksum byte.
+  \item Checksum drain latency is 1~clock cycle: the checksum byte
+        appears at the module output within one clock of the final
+        payload byte being accepted (confirmed in integration testbench).
+  \item No \texttt{tlast} signal is generated.
+\end{itemize}
+
+The output frame structure for one \ac{mpegts} packet is illustrated in
+Figure~\ref{fig:pl02_packet}.
+
+% [ALT: Packet diagram showing one 188-byte MPEG-TS output packet on
+%       the AXI-Stream bus. A grey box on the left is labeled MPTS
+%       sync byte 0x47 consumed by PL-02. A yellow box spanning 187
+%       bytes is labeled PAYLOAD[0..186] and shows individual cells
+%       Byte-0, Byte-1, Byte-4, ellipsis, Byte-185, Byte-186. A red
+%       box on the right spanning 1 byte is labeled CHECKSUM 1-byte
+%       and contains Byte-0. Below the diagram: tvalid=0 during
+%       PH_SYNC sync byte gap; tvalid=1 payload region; tvalid=1
+%       forced PH_THREE checksum; tlast not used.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_pl02_packet}
+  \caption{PL-02 output frame structure: one reframed 188-byte
+           \ac{mpegts} packet on the downstream \ac{axi}4-Stream bus.
+           The \texttt{0x47} sync byte is consumed; the parity checksum
+           occupies position~187~\cite{ITU_J83}.}
+  \label{fig:pl02_packet}
+\end{figure}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\paragraph{Resource Utilization and Timing.}
+
+\begin{table}[htbp]
+  \caption{PL-02 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 21~Oct~2026).}
+  \label{tab:pl02_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used & Available   & Utilization \\
+    \hline
+    \ac{lut6}    &  64  & 425{,}280   & 0.02\%      \\[2pt]
+    \ac{ff}      &  33  & 850{,}560   & $<0.01$\%   \\[2pt]
+    \ac{bram}    &   0  & 1{,}080     & 0.00\%      \\[2pt]
+    \ac{dsp}     &   0  & 4{,}272     & 0.00\%      \\[2pt]
+    UltraRAM     &   0  & 80          & 0.00\%      \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \caption{PL-02 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 21~Oct~2026).}
+  \label{tab:pl02_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                 & 250\,MHz           & 100\,MHz           \\
+    \hline
+    WNS, setup             & $+2.687$\,ns (MET) & $+8.268$\,ns (MET) \\[2pt]
+    WHS, hold              & $+0.043$\,ns (MET) & $+0.047$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$       & $\geq 372$\,MHz    & $\geq 545$\,MHz    \\[2pt]
+    Failing endpoints      & 0                  & 0                  \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used a golden vector sweep of 250~\ac{mpegts}
+packets against the \texttt{j83b\_transport\_framing.m} MATLAB
+reference model at four upstream throttle configurations, an independent
+bit-serial software model comparison across 500~randomized packets, and
+adversarial payload patterns including all-zero, all-\texttt{0xFF},
+alternating, and \texttt{0x47}-embedded bytes.
+All 512~\ac{rom} table entries were verified against the generator
+output with zero mismatches.
+\ac{axi}4-Stream \ac{sva} checks confirmed no X-propagation on valid
+and data stability under backpressure; \ac{fsm} reset recovery was
+confirmed at all four states.
+
+Integration testing in the PL-02$\to$PL-04 chain verified 1-cycle
+checksum drain latency, zero spurious sync transitions with an
+all-\texttt{0x47} adversarial payload across 47{,}000~bytes, and
+deterministic checksum \texttt{0x67} for all-zero payload across
+250~packets.
+End-to-end testing in the PL-02$\to$PL-06 chain confirmed
+8{,}304/8{,}304 trellis groups bit-exact against the stage~5 golden
+reference with zero \ac{sva} fires.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-02 hardware validation summary.}
+  \label{tab:pl02_hw}
+  \centering
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \path{pl_2_6.bit}\\(PL-02$\to$PL-06 chain)
+      & 100\,MHz
+      & PYNQ \ac{dma} loopback~\cite{PYNQ_DOC}; output compared
+        to \path{stage5_framesync_bits.bin}
+      & 8{,}304/8{,}304 groups bit-exact;
+        4/4 \ac{fec} frames PASS
+      & 28-Jul-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-02 was performed indirectly as part of the
+PL-02$\to$PL-06 transmit chain.
+Bit-exact agreement at the PL-06 output confirms correct operation of all
+intervening modules including PL-02.
+The bitfile was evaluated at 100\,MHz; production operation targets
+250\,MHz, which post-implementation analysis confirms meets timing with
+$F_{\max} \geq 372$\,MHz~(Table~\ref{tab:pl02_timing}).
+
+%\clearpage
+
+% ============================================================
+% CH-4.3.3  PL-03: RS_ENC
+% Source : PL-03_RS_ENC_handoff.md v2.0  09-Jul-2026
+%          rs_enc.sv v2.0 / gf_mul_rom.sv / main.m
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.3 [PL-03] — PASS  22-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [OMITTED — author]  IMG-4 [x]  IMG-5 [x]
+% Expanded  : 22-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+% ROM attribution: ANSpect J.83B reference implementation
+% ============================================================
 
 \subsection{PL-03: Reed-Solomon Encoder}
 \label{subsec:pl03}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.3] + handoff for PL-03
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The Reed-Solomon encoder module (PL-03) implements the J.83B Annex~B
+$(128,\,122)$ extended \ac{rs} encoding stage over $\mathrm{GF}(2^7)$,
+specified in \S\,B.5.1 of the standard~\cite{ITU_J83}.
+The algorithmic definition of this code — field arithmetic, generator
+polynomial, parity computation, and extended symbol derivation — is
+presented in Section~\ref{sec:rs_encoding}; this section describes
+its hardware realization.
+The module is hand-coded SystemVerilog (\texttt{rs\_enc.sv},
+revision~v2.0), operates as an \ac{axi}4-Stream slave-to-master pair
+at the 250\,MHz \ac{pl} fabric clock, and carries a testbench status
+of TB-PASS (49{,}570 checks, 0 failures).
+Figure~\ref{fig:pl03_pipeline} shows its position in the transmit chain,
+receiving framed bytes from the transport framing module (PL-02) and
+forwarding $(128,\,122)$ coded blocks to the convolutional interleaver
+(PL-04).
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal
+%       row. Left block: PL-02 TRANSPORT_FRAMING. Centre block
+%       (highlighted green): PL-03 RS_ENC. Right block: PL-04
+%       INTERLEAVER. Arrows between blocks are labeled 8-bit AXI-S.
+%       A 250 MHz PL clock label appears below the chain; no CDC
+%       marker is present at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl03_pipeline}
+  \caption{Pipeline position of PL-03 \texttt{rs\_enc} in the
+           J.83B Annex~B transmit chain.}
+  \label{fig:pl03_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\paragraph{Interface.}
+
+The Vivado \ac{ip} Integrator view in Figure~\ref{fig:pl03_ip_block}
+shows the packaged \texttt{rs\_enc} core with the \texttt{s\_axi} slave
+interface group on the left and the \texttt{m\_axi} master interface group
+on the right.
+The port list is given in Table~\ref{tab:pl03_ports}.
+
+% [ALT: Screenshot of the rs_enc IP core in Vivado IP Integrator. The
+%       block is labeled rs_encoder with the subtitle J.83B RS Encoder
+%       (PL-03) (Pre-Production). On the left side the s_axi slave
+%       interface group shows ports s_axi_tdata[7:0], s_axi_tvalid,
+%       and s_axi_tready. Control ports clk and rst_n appear below.
+%       On the right side the m_axi master interface group shows ports
+%       m_axi_tdata[7:0], m_axi_tvalid, and m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.35\linewidth]{figures/ch4/ch4_pl03_ip_block}
+  \caption{PL-03 \texttt{rs\_enc} packaged as a Vivado \ac{ip} core
+           in \ac{ip} Integrator, showing the \texttt{s\_axi} slave
+           and \texttt{m\_axi} master interface groups.}
+  \label{fig:pl03_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-03 \texttt{rs\_enc} port list.}
+  \label{tab:pl03_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{3.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock                  & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset                  & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 8     & \ac{axi}4-Stream slave & Framed byte from PL-02; bit~7 masked internally \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave & Upstream backpressure \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 8     & \ac{axi}4-Stream master & \ac{rs}-encoded symbol to PL-04; bit~7 always 0 \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master & Downstream data valid \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master & Downstream backpressure \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  FSM
+% ------------------------------------------------------------------
+
+\paragraph{FSM.}
+
+The module processes one \ac{rs} block at a time through a fixed
+five-stage sequence: wait, collect, send data, send parity, send
+extended symbol.
+Figure~\ref{fig:pl03_fsm} shows the state diagram; each state
+corresponds directly to one of these tasks.
+
+% [ALT: State diagram with five circular states. IDLE(0) is top-left
+%       with s_tready=0 and m_tvalid=0. ABSORB(1) is top-right with
+%       s_tready=1 and m_tvalid=0. EMIT_INFO(2) is middle-right with
+%       s_tready=0 and m_tvalid=1, annotated stalls at out_cnt==121
+%       until horner_done. EMIT_PAR(3) is bottom-centre with
+%       s_tready=0 and m_tvalid=1. EMIT_EXT(4) is bottom-left with
+%       s_tready=0 and m_tvalid=1. A dashed reset arc enters IDLE.
+%       IDLE to ABSORB: s_axi_tvalid. ABSORB self-loop: !(input_hs
+%       && sym_cnt==121). ABSORB to EMIT_INFO: input_hs &&
+%       sym_cnt==121. EMIT_INFO self-loop: !(output_hs &&
+%       out_cnt==121 && horner_done). EMIT_INFO to EMIT_PAR:
+%       output_hs && out_cnt==121 && horner_done. EMIT_PAR
+%       self-loop: !(output_hs && out_cnt==4). EMIT_PAR to EMIT_EXT:
+%       output_hs && out_cnt==4. EMIT_EXT to ABSORB: output_hs.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.70\linewidth]{figures/ch4/ch4_pl03_fsm}
+  \caption{PL-03 \ac{fsm} state transition diagram.
+           \texttt{input\_hs}:\ \texttt{s\_axi\_tvalid \&\ s\_axi\_tready};
+           \texttt{output\_hs}:\ \texttt{m\_axi\_tvalid \&\ m\_axi\_tready}.
+           The \texttt{EMIT\_INFO} state pauses output for exactly
+           5~cycles at \texttt{out\_cnt}~$= 121$ while the background
+           Horner computation completes.}
+  \label{fig:pl03_fsm}
+\end{figure}
+
+\FloatBarrier
+
+\texttt{IDLE} is the power-on state after reset.
+The module holds \texttt{s\_axi\_tready} low and waits.
+When the upstream transport framing module has a byte ready, it asserts
+\texttt{s\_axi\_tvalid} and holds both \texttt{tvalid} and
+\texttt{tdata} stable until the transfer is accepted — this is the
+\ac{axi}4-Stream master obligation~\cite{ARM_IHI0022}.
+PL-03 detects \texttt{s\_axi\_tvalid} in \texttt{IDLE} and transitions
+to \texttt{ABSORB} on the next clock cycle, where \texttt{s\_axi\_tready}
+rises.
+The upstream byte is consumed on that same cycle when both signals are
+high simultaneously.
+No data is lost and no deadlock occurs: PL-02 holds its byte stable,
+PL-03 raises readiness one cycle later, and the transfer completes.
+
+\texttt{ABSORB} is the collection phase.
+The module accepts the 122 input bytes one at a time, storing each
+into the \texttt{cw[]} register array.
+While bytes are being accepted, the five \ac{rs} parity values are
+computed incrementally in the background using a $\mathrm{GF}(128)$
+\ac{lfsr}~\cite{ITU_J83}; no separate encoding pass is needed.
+\texttt{s\_axi\_tready} is high only in this state, so the upstream
+module knows the encoder is ready to accept data.
+
+\texttt{EMIT\_INFO} is the data forwarding phase.
+The 122 original bytes are sent downstream unchanged.
+Simultaneously, the module begins computing the extended symbol
+$c(\alpha^6)$ in the background using Horner's method over the
+complete 127-symbol codeword~\cite{ITU_J83}.
+This background computation finishes just after the last info byte
+is presented — specifically, 5~clock cycles after byte~121 is ready
+to send.
+During these 5~cycles the module pauses output (\texttt{m\_axi\_tvalid}~$= 0$)
+while the computation completes.
+This is the Horner stall: a short, fixed-duration gap between the
+last info byte and the first parity byte, visible on the
+\texttt{EMIT\_INFO} self-loop arc in Figure~\ref{fig:pl03_fsm}.
+
+\texttt{EMIT\_PAR} sends the five computed \ac{rs} parity bytes
+downstream, one per clock cycle.
+
+\texttt{EMIT\_EXT} sends the single extended symbol byte.
+On its output handshake, the module transitions directly back to
+\texttt{ABSORB} — ready to accept the next block with no idle gap
+and without returning through \texttt{IDLE}.
+
+Table~\ref{tab:pl03_fsm} gives the handshake signal values in
+each state.
+
+
+
+\begin{table}[htbp]
+  \caption{PL-03 \ac{fsm} state summary.}
+  \label{tab:pl03_fsm}
+  \centering
+  \begin{tabular}{lllp{5.5cm}}
+    \hline
+    State               & \texttt{s\_axi\_tready} & \texttt{m\_axi\_tvalid} & Task \\
+    \hline
+    \texttt{IDLE}       & \texttt{0} & \texttt{0}       & Waiting for first upstream byte \\[2pt]
+    \texttt{ABSORB}     & \texttt{1} & \texttt{0}       & Collecting 122 input bytes; computing RS parity in background \\[2pt]
+    \texttt{EMIT\_INFO} & \texttt{0} & \texttt{1}$^{*}$ & Forwarding 122 info bytes; computing extended symbol in background ($^{*}$5-cycle pause at byte~121) \\[2pt]
+    \texttt{EMIT\_PAR}  & \texttt{0} & \texttt{1}       & Sending 5 RS parity bytes \\[2pt]
+    \texttt{EMIT\_EXT}  & \texttt{0} & \texttt{1}       & Sending extended symbol; transitions to \texttt{ABSORB} on completion \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\texttt{s\_axi\_tready} is a pure combinational state decode
+(\texttt{assign s\_axi\_tready = (state == ABSORB)}), with no path
+from \texttt{m\_axi\_tready} to \texttt{s\_axi\_tready}.
+Downstream backpressure from PL-04 does not propagate upstream to PL-02.
+
+% ------------------------------------------------------------------
+% §4  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\paragraph{Memory Resources.}
+All $\mathrm{GF}(128)$ multiplications in the \ac{lfsr} encoder and
+the Horner evaluator are provided by a common sub-module,
+\texttt{gf\_mul\_rom.sv}, instantiated six times.
+Each instance is a $16{,}384 \times 7$-bit combinational \ac{rom}
+addressed by the 14-bit concatenation $\{a[6:0],\,b[6:0]\}$,
+implementing the full $128 \times 128$ $\mathrm{GF}(128)$ multiplication
+table for $p(x) = x^7 + x^3 + 1$~\cite{ITU_J83}.
+The \texttt{rom\_style = "distributed"} attribute produces a single-cycle
+combinational read synthesized entirely into distributed \ac{lut}
+logic with no \ac{bram} consumed.
+The \ac{rom} content was pre-computed offline using the ANSpect J.83B
+reference implementation~\cite{ITU_J83}, with \texttt{main.m} extracting
+the $\mathrm{GF}(128)$ table via the \texttt{j83b\_rs\_encode('tables')}
+accessor and writing it to \texttt{gf\_mul.mem}.
+Table~\ref{tab:pl03_roms} lists the sub-module configuration.
+
+\begin{table}[htbp]
+  \caption{PL-03 \texttt{gf\_mul\_rom} sub-module configuration.}
+  \label{tab:pl03_roms}
+  \centering
+  \small
+  \begin{tabular}{ll}
+    \hline
+    Parameter        & Value \\
+    \hline
+    Module file      & \texttt{gf\_mul\_rom.sv} \\[2pt]
+    Instances        & 6 total: \texttt{gf\_rom1}--\texttt{gf\_rom5} (\ac{lfsr} taps $G_1$--$G_5$);
+                       \texttt{gf\_rom\_exp6} (Horner $\alpha^6$ step) \\[2pt]
+    Depth $\times$ Width & $16{,}384 \times 7$ ($128 \times 128$ entries, row-major) \\[2pt]
+    Address mapping  & $\{a[6:0],\,b[6:0]\}$ \\[2pt]
+    Content          & $\mathrm{GF}(128)$ multiplication table,
+                       $p(x) = x^7 + x^3 + 1$ \\[2pt]
+    Synthesis        & Distributed (\texttt{rom\_style = "distributed"});
+                       combinational read \\[2pt]
+    Source file      & \texttt{gf\_mul.mem} (shared across all 6 instances) \\[2pt]
+    Generator        & MATLAB script via ANSpect J.83B reference implementation \\[2pt]
+    Verification     & 529/529 entries (all generator coefficient cross-products) \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §5  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl03_datapath — omitted by author]
+
+With the \ac{fsm} and its memory resources established, this section
+describes how each state's task is realized in hardware.
+
+\textit{Bit masking.}
+The J.83B \ac{rs} code operates on 7-bit $\mathrm{GF}(128)$ symbols;
+the 8-bit \ac{axi}4-Stream bus carries one symbol per byte with bit~7
+unused~\cite{ITU_J83}.
+The ANSpect implementation enforces this by masking bit~7 of
+\texttt{s\_axi\_tdata} to zero before any computation,
+and all output symbols are formed by the
+\texttt{\{1'b0,\,cw[out\_cnt]\}} concatenation in the output mux,
+hardwiring bit~7 to zero on every output byte.
+
+\textit{\texttt{ABSORB} — LFSR encoder.}
+The five \texttt{gf\_mul\_rom} instances \texttt{gf\_rom1}--\texttt{gf\_rom5}
+provide the $\mathrm{GF}(128)$ multiplications for generator coefficients
+$G_1\!=\!62$, $G_2\!=\!46$, $G_3\!=\!98$, $G_4\!=\!70$, $G_5\!=\!11$
+($\alpha^{52}$, $\alpha^{116}$, $\alpha^{119}$, $\alpha^{61}$,
+$\alpha^{15}$ respectively~\cite{ITU_J83}).
+The feedback input to all five instances is gated combinationally to
+zero outside \texttt{ABSORB}, suppressing spurious \ac{rom} switching
+in emit states.
+Each accepted symbol is simultaneously written into the 127-entry,
+7-bit register array \texttt{cw[0:126]}.
+On the final handshake at \texttt{sym\_cnt}~$= 121$, the five computed
+parity values are snapshotted into \texttt{cw[122:126]}, completing the
+127-symbol codeword used by the Horner circuit.
+
+\textit{\texttt{EMIT\_INFO} — Horner evaluator.}
+The sixth instance \texttt{gf\_rom\_exp6} computes
+$\bar{c} = c(\alpha^6)$ via Horner's method over \texttt{cw[0:126]}
+while info bytes stream downstream.
+Each step is one $\mathrm{GF}(128)$ multiply-accumulate:
+$\mathtt{horner\_acc} \leftarrow \mathrm{GF\_MUL}(\mathtt{horner\_acc},\,\alpha^6)
+\oplus \mathtt{cw[horner\_cnt]}$.
+After 126 steps the result is latched into \texttt{ext\_sym} and
+\texttt{horner\_done} asserts, ending the 5-cycle output pause and
+releasing the transition to \texttt{EMIT\_PAR}.
+
+\textit{Register array and output mux.}
+The \texttt{cw[0:126]} array of $127 \times 7 = 889$
+flip-flops is the dominant register resource.
+Its combinational read is implemented by Vivado as a MUXF7/MUXF8
+cascade (210 and 70 cells respectively), selecting
+\texttt{cw[out\_cnt]} for the output mux at the full 250\,MHz clock rate.
+The \texttt{parity[0:4]} registers and \texttt{cw[122:126]} hold
+identical values after the parity snapshot but are not merged
+by synthesis, contributing up to 35 redundant flip-flops to the
+970~\ac{ff} total reported in Table~\ref{tab:pl03_resources}.
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-02 transport framing):}
+\begin{itemize}
+  \item Input bytes are treated as 7-bit $\mathrm{GF}(128)$ symbols;
+        bit~7 is masked to zero internally and does not affect the
+        encoded output~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tready} is asserted only in \texttt{ABSORB};
+        upstream must hold valid data stable during all emit states.
+  \item After reset the module enters \texttt{IDLE} with
+        \texttt{s\_axi\_tready}~$= 0$.
+        The first assertion of \texttt{s\_axi\_tvalid} moves the module
+        to \texttt{ABSORB} within one clock cycle.
+        PL-02 presents the first framed byte after its own
+        \texttt{PH\_SYNC} completes, which transitions PL-03 out of
+        \texttt{IDLE} with no deadlock.
+  \item No \texttt{tlast} signal is used.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-04 convolutional interleaver):}
+\begin{itemize}
+  \item Exactly 128 symbols are emitted per 122-symbol input block:
+        \texttt{info[0..121]}, \texttt{parity[0..4]}, extended symbol
+        $c(\alpha^6)$.
+        Bit~7 is hardwired to zero on all output symbols.
+  \item A fixed 5-cycle gap (\texttt{m\_axi\_tvalid}~$= 0$) appears
+        between the final info symbol at position~121 and the first
+        parity symbol.
+        This gap is not data-dependent; its duration is fixed at
+        exactly 5~cycles.
+        PL-04 must tolerate a mid-block valid deassertion at this
+        position.
+  \item Back-to-back RS blocks are supported:
+        \texttt{EMIT\_EXT} transitions to \texttt{ABSORB} on the
+        extended symbol handshake with no idle gap.
+  \item No \texttt{tlast} signal is generated.
+\end{itemize}
+
+Figure~\ref{fig:pl03_packet} shows the output block structure.
+The three colored regions correspond directly to the three emit
+states: the yellow \texttt{info[0..121]} region covers
+\texttt{EMIT\_INFO}; the pink \texttt{parity[0..4]} region covers
+\texttt{EMIT\_PAR}; and the green \texttt{ext} byte covers
+\texttt{EMIT\_EXT}.
+The gap labeled between \texttt{info[121]} and \texttt{parity[0]}
+represents the 5-cycle Horner stall during which the module holds
+\texttt{m\_axi\_tvalid}~$= 0$ at the \texttt{EMIT\_INFO}$\to$\texttt{EMIT\_PAR}
+boundary.
+The bit-packing inset confirms that bit~7 of every output byte is
+\texttt{1'b0} padding, with bits~6:0 carrying the 7-bit \ac{rs}
+symbol.
+
+% [ALT: Diagram of one 128-symbol RS output block on the AXI-Stream
+%       bus. A yellow section labeled info[0..121] spans 122 bytes
+%       showing cells Byte-0 through Byte-121. A pink section labeled
+%       parity[0..4] spans 5 bytes. A green section labeled ext spans
+%       1 byte. A note below states: Horner stall tvalid=0 5 cycles
+%       between info[121] and parity[0]. An inset table shows bit
+%       packing: bit[7]=1b0 padding; bit[6:0]=RS Encoded data.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_pl03_packet}
+  \caption{PL-03 output frame structure: one 128-symbol $(128,\,122)$
+           \ac{rs} block on the downstream \ac{axi}4-Stream bus.
+           Bit~7 is zero-padded on all output symbols; the 5-cycle
+           Horner stall between \texttt{info[121]} and
+           \texttt{parity[0]} is shown at the state
+           boundary~\cite{ITU_J83}.}
+  \label{fig:pl03_packet}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-03 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 21~Oct~2026).}
+  \label{tab:pl03_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used  & Available  & Utilization \\
+    \hline
+    \ac{lut6}    &  834  & 425{,}280  & 0.20\%      \\[2pt]
+    \ac{ff}      &  970  & 850{,}560  & 0.11\%      \\[2pt]
+    MUXF7        &  210  & N/A        & N/A          \\[2pt]
+    MUXF8        &   70  & N/A        & N/A          \\[2pt]
+    \ac{bram}    &    0  & 1{,}080    & 0.00\%      \\[2pt]
+    \ac{dsp}     &    0  & 4{,}272    & 0.00\%      \\[2pt]
+    UltraRAM     &    0  & 80         & 0.00\%      \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-03 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 21~Oct~2026).}
+  \label{tab:pl03_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                   & 250\,MHz           & 100\,MHz           \\
+    \hline
+    WNS, setup               & $+1.623$\,ns (MET) & $+6.858$\,ns (MET) \\[2pt]
+    WHS, hold                & $+0.024$\,ns (MET) & $+0.047$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$         & $\geq 416$\,MHz    & $\geq 315$\,MHz    \\[2pt]
+    Failing endpoints        & 0                  & 0                  \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used a 352-block golden vector sweep against the
+MATLAB reference model \texttt{j83b\_rs\_encode.m}, confirming bit-exact
+agreement on all 128 output symbols per block.
+The extended symbol $c(\alpha^6)$ was verified independently by evaluating
+the 127-symbol codeword polynomial at $\alpha^6$ via Horner's method in
+software and comparing against the \ac{rtl} output.
+The $\mathrm{GF}(128)$ syndrome polynomials $c(\alpha^1)$ through
+$c(\alpha^5)$ were confirmed to evaluate to zero for all encoded blocks,
+verifying codeword validity~\cite{ITU_J83}.
+\ac{axi}4-Stream \ac{sva} checks confirmed no \texttt{m\_axi\_tvalid}
+in \texttt{IDLE} or \texttt{ABSORB}, no \texttt{s\_axi\_tready} in any
+emit state, and data stability under backpressure throughout.
+The 5-cycle Horner stall was confirmed present on every block.
+Reset recovery was verified at all five \ac{fsm} states.
+
+Integration testing in the PL-02$\to$PL-04 chain confirmed the Horner
+stall at exactly 5~cycles with zero variance across 385~RS blocks, an
+RS block period of 255--256~cycles, and lossless operation under
+downstream backpressure during the stall window.
+End-to-end testing in the PL-02$\to$PL-06 chain confirmed
+8{,}304/8{,}304 trellis groups bit-exact against the stage~5 golden
+reference with zero \ac{sva} fires.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-03 hardware validation summary.}
+  \label{tab:pl03_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \path{pl_2_6.bit}\\(PL-02$\to$PL-06 chain)
+      & 100\,MHz
+      & PYNQ \ac{dma} loopback~\cite{PYNQ_DOC}; output compared
+        to \path{stage5_framesync_bits.bin}
+      & 8{,}304/8{,}304 groups bit-exact; 352~RS blocks confirmed
+      & 28-Jul-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-03 was performed indirectly as part of the
+PL-02$\to$PL-06 transmit chain.
+Bit-exact agreement at the PL-06 output across 352~RS blocks confirms
+correct parity computation and extended symbol generation.
+The bitfile was evaluated at 100\,MHz; production operation targets
+250\,MHz, confirmed by post-implementation timing at
+$F_{\max} \geq 416$\,MHz~(Table~\ref{tab:pl03_timing}).
+
+\clearpage
 
 \subsection{PL-04: Convolutional Interleaver}
 \label{subsec:pl04}
