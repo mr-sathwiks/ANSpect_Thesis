@@ -315,7 +315,7 @@ Figure~\ref{fig:rfsoc4x2_block} provides a top-level overview of the board subsy
 \begin{figure}[htbp]
   \centering
   % TODO: Replace placeholder path with final figure file before submission.
-  % Suggested filename: figures/ch2_rfsoc4x2_block.pdf
+  % Suggested filename: figures/ch2/ch2_rfsoc4x2_block.pdf
   \includegraphics[width=0.8\textwidth]{figures/ch2/ch2_rfsoc4x2_block}
   \caption{Block diagram of the RFSoC~4x2 board, showing the principal
            hardware subsystems of the AMD Zynq~UltraScale+ ZU48DR
@@ -461,9 +461,10 @@ network~\cite{AMD_PG269}.
 The ZU48DR integrates four \ac{rf}-\ac{adc} tiles
 (tiles 224--227), each containing two converter channels.
 Of these, two tiles are routed to board-accessible
-\ac{sma} connectors: Tile~224 provides channels~0 and~1
-(RF~ADC~A and RF~ADC~B) and Tile~226 provides channels~0
-and~1 (RF~ADC~C and RF~ADC~D), yielding four accessible
+\ac{sma} connectors: Tile~226 provides Block~1
+(RF~ADC~A) and Block~0 (RF~ADC~B), and Tile~224
+provides Block~1 (RF~ADC~C) and Block~0 (RF~ADC~D),
+yielding four accessible
 14-bit \ac{rf}-\ac{adc} channels capable of sampling
 at up to 5\,\ac{gsps} with an analog input bandwidth
 extending to approximately 6\,GHz~\cite{Kovacs2024,AMD_PG269}.
@@ -492,8 +493,8 @@ complex sample per transfer as a packed
 The ZU48DR integrates four \ac{rf}-\ac{dac} tiles
 (tiles 228--231), each containing two converter channels.
 Of these, two blocks are routed to board-accessible
-\ac{sma} connectors: Tile~228 Block~0 (RF~DAC~A) and
-Tile~230 Block~0 (RF~DAC~B), yielding two accessible
+\ac{sma} connectors: Tile~230 Block~0 (RF~DAC~A) and
+Tile~228 Block~0 (RF~DAC~B), yielding two accessible
 14-bit \ac{rf}-\ac{dac} channels capable of operating
 at up to 9.85\,\ac{gsps}~\cite{Kovacs2024}.
 Tile~228 Block~1, Tiles~229, 231, and Tile~230 Block~1
@@ -559,13 +560,15 @@ summarized in Table~\ref{tab:rfdc_params}.
   \end{tabular}
 \end{table}
 
-% [ALT: Table mapping all twelve RFDC converter blocks (eight ADC, four DAC)
-%  to their tile number, block index, board label, and SMA routing status
-%  on the RFSoC 4x2 board.]
+
+% [ALT: Diagram mapping all sixteen RFDC converter blocks (eight ADC blocks
+%  across four ADC tiles, eight DAC blocks across four DAC tiles) to their
+%  tile number, block index, board label, and SMA routing status on the
+%  RFSoC 4x2 board. Unrouted blocks are shown with hatching.]
 \begin{figure}[htbp]
   \centering
   % TODO: Replace placeholder path with final figure file before submission.
-  % Suggested filename: figures/ch2_rfdc_tile_map.pdf
+  % Suggested filename: figures/ch2/ch2_rfdc_tile_map.pdf
   \includegraphics[width=0.85\textwidth]{figures/ch2/ch2_rfdc_tile_map}
   \caption{RFDC tile map of the AMD Zynq~UltraScale+ ZU48DR device
            on the RFSoC~4x2 board, showing all \ac{rf}-\ac{adc} and
@@ -575,7 +578,9 @@ summarized in Table~\ref{tab:rfdc_params}.
   \label{fig:rfdc_tile_map}
 \end{figure}
 
-Table~\ref{tab:rfdc_tile_map} enumerates all twelve
+Figure~\ref{fig:rfdc_tile_map} illustrates the complete
+tile and block layout of the ZU48DR \ac{rfdc}.
+Table~\ref{tab:rfdc_tile_map} enumerates all sixteen
 converter blocks on the ZU48DR, their tile and block
 indices, board-assigned labels, and routing status
 on the RFSoC~4x2 board.
@@ -589,20 +594,20 @@ on the RFSoC~4x2 board.
     \hline
     Type & Tile & Block & Board Label & Routed to SMA \\
     \hline
-    RF-DAC & 228 & 0 & RF DAC A & Yes \\[2pt]
+    RF-DAC & 228 & 0 & RF DAC B & Yes \\[2pt]
     RF-DAC & 228 & 1 & ---       & No  \\[2pt]
     RF-DAC & 229 & 0 & ---       & No  \\[2pt]
     RF-DAC & 229 & 1 & ---       & No  \\[2pt]
-    RF-DAC & 230 & 0 & RF DAC B & Yes \\[2pt]
+    RF-DAC & 230 & 0 & RF DAC A & Yes \\[2pt]
     RF-DAC & 230 & 1 & ---       & No  \\[2pt]
     RF-DAC & 231 & 0 & ---       & No  \\[2pt]
     RF-DAC & 231 & 1 & ---       & No  \\[2pt]
-    RF-ADC & 224 & 0 & RF ADC A & Yes \\[2pt]
-    RF-ADC & 224 & 1 & RF ADC B & Yes \\[2pt]
+    RF-ADC & 224 & 0 & RF ADC D & Yes \\[2pt]
+    RF-ADC & 224 & 1 & RF ADC C & Yes \\[2pt]
     RF-ADC & 225 & 0 & ---       & No  \\[2pt]
     RF-ADC & 225 & 1 & ---       & No  \\[2pt]
-    RF-ADC & 226 & 0 & RF ADC C & Yes \\[2pt]
-    RF-ADC & 226 & 1 & RF ADC D & Yes \\[2pt]
+    RF-ADC & 226 & 0 & RF ADC B & Yes \\[2pt]
+    RF-ADC & 226 & 1 & RF ADC A & Yes \\[2pt]
     RF-ADC & 227 & 0 & ---       & No  \\[2pt]
     RF-ADC & 227 & 1 & ---       & No  \\
     \hline
