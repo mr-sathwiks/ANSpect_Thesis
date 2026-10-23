@@ -2359,12 +2359,915 @@ The bitfile was evaluated at 100\,MHz; production operation targets
 250\,MHz, confirmed by post-implementation timing at
 $F_{\max} \approx 576$\,MHz~(Table~\ref{tab:pl06_timing}).
 
-\clearpage
+%\clearpage
+
+% ============================================================
+% CH-4.3.7  PL-07: TRELLIS_ENC
+% Source : PL-07_TRELLIS_ENC_handoff.md v2.2  03-Aug-2026
+%          trellis_enc.sv v2.2
+%          write_trellis_roms.m
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.7 [PL-07] — PASS  23-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [--]  IMG-4 [x]  IMG-6 [x]
+% Expanded  : 23-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+% ROM attribution: ANSpect J.83B reference implementation
+% ============================================================
 
 \subsection{PL-07: Trellis Encoder}
 \label{subsec:pl07}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.7] + handoff for PL-07
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The trellis encoder module (PL-07) implements the J.83B Annex~B
+trellis-coded modulation stage, encompassing the trellis group
+formatter (\S\,B.5.5.2), differential precoder (\S\,B.5.5.3),
+\ac{bcc} encoder (\S\,B.5.5.4), and sync-group routing (\S\,B.5.3)
+of the standard~\cite{ITU_J83}.
+The algorithmic background for this stage — trellis group structure,
+differential precoding, \ac{bcc} puncture pattern, and C-word
+assembly — is presented in Section~\ref{sec:trellis}; this section
+covers its hardware realization.
+The module is hand-coded SystemVerilog (\texttt{trellis\_enc.sv},
+revision~v2.2), operates as an \ac{axi}4-Stream slave-to-master pair
+at the 250\,MHz \ac{pl} fabric clock, and carries a testbench status
+of TB-PASS (43~checks, 0~failures; 10 \ac{sva} assertions active).
+
+Figure~\ref{fig:pl07_pipeline} shows the position of PL-07 in the
+transmit chain.
+Both the slave and master ports carry 40-bit \ac{axi}4-Stream buses,
+but the two 40-bit words are semantically different.
+The slave bus receives a single 38-bit trellis group from PL-06, padded
+to 40~bits with \texttt{tdata[39:38]}~$=$~\texttt{2'b00}; only
+\texttt{tdata[37:0]} carries live data, with \texttt{tdata[37]} holding
+the first bit of the group in the \ac{msb}-first convention inherited
+from PL-06.
+The master bus delivers five packed 8-bit C-words to PL-08, and all
+40~bits are meaningful — \texttt{m\_axi\_tdata[7:0]} carries
+\texttt{sym[0]} and \texttt{m\_axi\_tdata[39:32]} carries
+\texttt{sym[4]}~\cite{ITU_J83}.
+PL-07 is therefore the stage where the bus transitions from carrying
+one unencoded group to carrying the five encoded symbols that address
+the \ac{qam256} constellation mapper.
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal
+%       row. Left block: PL-06 FRAME_SYNC_ENC. Centre block
+%       (highlighted green): PL-07 TRELLIS_ENC. Right block: PL-08
+%       QAM256_MAP. Arrows between blocks are labeled 40-bit AXI-S.
+%       A 250 MHz PL clock label appears at the lower left; no CDC
+%       marker is present at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/ch4/ch4_pl07_pipeline}
+  \caption{Pipeline position of PL-07 \texttt{trellis\_enc} in the
+           J.83B Annex~B transmit chain. Both AXI-Stream connections
+           are 40-bit wide; the slave bus carries one 38-bit trellis
+           group per transfer while the master bus carries five packed
+           8-bit C-words.}
+  \label{fig:pl07_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl07_ip_block} shows the packaged
+\texttt{trellis\_enc} core in the Vivado \ac{ip} Integrator canvas.
+Comparing the port layout to prior modules in the TX chain, two
+differences are immediately visible.
+On the slave side, \texttt{s\_axi\_tlast} appears as an input port;
+PL-07 is the first module downstream of PL-06 that consumes the
+frame boundary signal rather than ignoring it, using it to reset
+\texttt{grp\_cnt} and thereby control the routing of each group to
+the correct processing path.
+On the master side, \texttt{m\_axi\_tlast} appears as an output port;
+PL-07 generates its own frame boundary signal for PL-08, asserting
+it on the 5th and final sync output of each \ac{fec} frame.
+No other module in the TX chain both consumes and produces
+\texttt{tlast}; PL-07 does so because the frame boundary definition
+shifts between the two stages — PL-06 asserts \texttt{tlast} on the
+last group input, while PL-07 asserts it on the last C-word bundle
+output, which arrives several clock cycles later through the
+\texttt{SYNC\_EMIT} drain.
+The full port list is given in Table~\ref{tab:pl07_ports}.
+
+% [ALT: Screenshot of the trellis_enc IP core in Vivado IP Integrator.
+%       The block is labeled trellis_enc with subtitle J.83B
+%       Trellis-Coded Modulation Encoder (PL-07) (Pre-Production). On
+%       the left side the s_axi slave interface group shows ports
+%       s_axi_tdata[39:0], s_axi_tlast, s_axi_tvalid, and
+%       s_axi_tready. Control ports clk and rst_n appear below. On
+%       the right side the m_axi master interface group shows ports
+%       m_axi_tdata[39:0], m_axi_tlast, m_axi_tvalid, and
+%       m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl07_ip_block}
+  \caption{PL-07 \texttt{trellis\_enc} packaged as a Vivado \ac{ip}
+           core in \ac{ip} Integrator. Both slave and master interface
+           groups include \texttt{tlast}: the slave consumes it as a
+           frame boundary input from PL-06, and the master generates
+           it as a frame boundary output to PL-08.}
+  \label{fig:pl07_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-07 \texttt{trellis\_enc} port list.}
+  \label{tab:pl07_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock
+      & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset
+      & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 40    & \ac{axi}4-Stream slave
+      & 38-bit trellis group from PL-06; \texttt{[39:38]}~$=$~\texttt{2'b00}
+        padding; effective data \texttt{[37:0]}; \texttt{tdata[37]}~$=$~first
+        bit (\ac{msb}-first) \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave
+      & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave
+      & Combinational; 1 in \texttt{IDLE} or \texttt{SYNC\_ACCUM};
+        0 in \texttt{EMIT} or \texttt{SYNC\_EMIT} \\[2pt]
+    \texttt{s\_axi\_tlast}  & in   & 1     & \ac{axi}4-Stream slave
+      & Frame boundary from PL-06; asserted on group~2{,}075 only;
+        consumed to reset \texttt{grp\_cnt} \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 40    & \ac{axi}4-Stream master
+      & 5~$\times$~8-bit C-words; \texttt{sym[0]} at \texttt{[7:0]},
+        \texttt{sym[4]} at \texttt{[39:32]}; all 40~bits carry data \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master
+      & Registered (\texttt{out\_valid\_reg}) \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master
+      & Downstream backpressure \\[2pt]
+    \texttt{m\_axi\_tlast}  & out  & 1     & \ac{axi}4-Stream master
+      & Registered (\texttt{out\_tlast\_reg}); asserted on the 5th
+        \texttt{SYNC\_EMIT} output of each frame \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  FSM
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{FSM.}
+
+Figure~\ref{fig:pl07_fsm} shows the four-state \ac{fsm} of PL-07.
+The four states correspond directly to the two processing paths that
+a trellis group can take: non-sync groups (0 through~2{,}070) use the
+\texttt{IDLE}$\to$\texttt{EMIT}$\to$\texttt{IDLE} path, while sync
+groups (2{,}071 through~2{,}075) use the longer
+\texttt{IDLE}$\to$\texttt{SYNC\_ACCUM}$\to$\texttt{SYNC\_EMIT}$\to$\texttt{IDLE}
+path that buffers all five sync groups before producing any output.
+
+% [ALT: State transition diagram with four circular states. IDLE(0)
+%       is at the top-left with s_tready=1 and m_tvalid=0. EMIT(1)
+%       is at the top-right with s_tready=0 and m_tvalid=1.
+%       SYNC_ACCUM(2) is at the bottom-right with s_tready=1 and
+%       m_tvalid=0. SYNC_EMIT(3) is at the bottom-left with
+%       s_tready=0 and m_tvalid=1 asterisk, with a note saying
+%       1-cycle gap between outputs reload cycle. A dashed arc
+%       labeled !rst_n enters IDLE from the top-left. Transitions:
+%       IDLE to EMIT labeled input_handshake and !sync_flag (grp_cnt
+%       less than 2071); IDLE to SYNC_ACCUM labeled input_handshake
+%       and sync_flag (grp_cnt >= 2071); EMIT to IDLE labeled
+%       output_handshake; SYNC_ACCUM to SYNC_EMIT labeled
+%       sync_accum_done (input_hs and sync_cnt==4); SYNC_EMIT to
+%       IDLE labeled sync_emit_done (output_handshake and
+%       sync_cnt==4).]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.78\linewidth]{figures/ch4/ch4_pl07_fsm}
+  \caption{PL-07 \ac{fsm} state transition diagram. The routing
+           decision in \texttt{IDLE} is made by \texttt{sync\_flag},
+           which asserts when \texttt{grp\_cnt}~$\geq 2{,}071$. The
+           asterisk on \texttt{SYNC\_EMIT} \texttt{m\_tvalid}
+           indicates a 1-cycle valid gap between consecutive outputs
+           while \texttt{out\_reg} reloads from the next
+           \texttt{sync\_buf} slot.}
+  \label{fig:pl07_fsm}
+\end{figure}
+
+\FloatBarrier
+
+\texttt{IDLE} is the reset entry state, shown at the top-left of
+Figure~\ref{fig:pl07_fsm} with the dashed \texttt{!rst\_n} arc.
+In \texttt{IDLE}, \texttt{s\_tready}~$= 1$ and
+\texttt{m\_tvalid}~$= 0$: the module is accepting input and has no
+pending output.
+Two outgoing transitions leave \texttt{IDLE}.
+When an input handshake completes and \texttt{sync\_flag} is
+deasserted — meaning \texttt{grp\_cnt} is below~2{,}071 — the module
+moves right to \texttt{EMIT}.
+When \texttt{sync\_flag} is asserted — \texttt{grp\_cnt} has reached
+the sync region at or above group~2{,}071 — the module moves down to
+\texttt{SYNC\_ACCUM} instead.
+\texttt{sync\_flag} includes a suppression term derived from
+\texttt{s\_axi\_tlast}: on the transaction that accepts group~2{,}075,
+\texttt{grp\_cnt\_rst} fires simultaneously, resetting the counter to
+zero on the same cycle and preventing \texttt{sync\_flag} from
+asserting for the first group of the following frame.
+
+\texttt{EMIT} is the simplest state, at the top-right of the diagram.
+\texttt{s\_tready}~$= 0$ stalls PL-06 while the module holds the
+registered C-word bundle for PL-08; \texttt{m\_tvalid}~$= 1$ presents
+the bundle on the output bus.
+The single outgoing arc, labeled \texttt{output\_handshake}, fires
+when PL-08 asserts \texttt{m\_tready} and accepts the transfer,
+returning the module directly to \texttt{IDLE} ready for the next
+group.
+One trellis group enters and one C-word bundle exits per
+\texttt{IDLE}$\to$\texttt{EMIT}$\to$\texttt{IDLE} cycle.
+
+\texttt{SYNC\_ACCUM} is at the bottom-right.
+Unlike \texttt{EMIT}, the module keeps \texttt{s\_tready}~$= 1$
+throughout this state, so PL-06 continues delivering sync groups
+at full rate without stalling.
+\texttt{m\_tvalid}~$= 0$ because no output is produced during
+accumulation; the five sync groups are collected silently into the
+190-bit \texttt{sync\_buf} register.
+The outgoing arc, \texttt{sync\_accum\_done}, is labeled
+\texttt{input\_hs \&\& sync\_cnt==4}: it fires on the handshake
+that accepts the fifth and final sync group (\texttt{sync\_cnt}
+counts from 0 to~4), transitioning the module to \texttt{SYNC\_EMIT}.
+
+\texttt{SYNC\_EMIT} occupies the bottom-left of the diagram.
+\texttt{s\_tready}~$= 0$ blocks PL-06 for the entire duration while
+the five accumulated C-word bundles are drained one per output
+handshake.
+The asterisk on \texttt{m\_tvalid}~$= 1^{*}$ calls out the 1-cycle
+reload gap visible in the figure's note: after each non-final output
+handshake, \texttt{out\_valid\_reg} clears for one cycle while
+\texttt{cword\_bundle} is recomputed from the next \texttt{sync\_buf}
+slot before \texttt{out\_reg} is reloaded.
+PL-08 must therefore tolerate brief valid deassertions between
+consecutive sync outputs.
+The final outgoing arc, \texttt{sync\_emit\_done}, fires when the
+fifth sync bundle is consumed (\texttt{output\_handshake \&\&
+sync\_cnt==4}), returning the module to \texttt{IDLE}.
+
+Table~\ref{tab:pl07_fsm} summarises the \texttt{s\_tready} and
+\texttt{m\_tvalid} values in each state.
+The key observation from the table is that \texttt{s\_tready} and
+\texttt{m\_tvalid} are never both high simultaneously in the same
+state: when the module is accepting input it is not asserting output
+valid, and when it is asserting output valid it has deasserted
+\texttt{s\_tready} to prevent new input from disturbing the
+registered output.
+
+\begin{table}[htbp]
+  \caption{PL-07 \ac{fsm} handshake signal matrix, corresponding to
+           the state labels in Figure~\ref{fig:pl07_fsm}.}
+  \label{tab:pl07_fsm}
+  \centering
+  \begin{tabular}{lllp{5.5cm}}
+    \hline
+    State                 & \texttt{s\_axi\_tready}  & \texttt{m\_axi\_tvalid}  & Notes \\
+    \hline
+    \texttt{IDLE}         & 1 (combinational) & 0 (registered)
+      & Ready for next group; \texttt{sync\_flag} selects destination \\[2pt]
+    \texttt{EMIT}         & 0 (combinational) & 1 (registered)
+      & C-word bundle registered and held; PL-06 backpressured \\[2pt]
+    \texttt{SYNC\_ACCUM}  & 1 (combinational) & 0 (registered)
+      & Accumulating 5 sync groups; PL-06 not stalled \\[2pt]
+    \texttt{SYNC\_EMIT}   & 0 (combinational) & 1$^{*}$ (registered)
+      & Draining 5 sync bundles; 1-cycle \texttt{tvalid} gap
+        between outputs (reload cycle) \\
+    \hline
+    \multicolumn{4}{l}{\small $^{*}$\texttt{m\_axi\_tvalid} is cleared for 1 cycle between non-final \texttt{SYNC\_EMIT} outputs.} \\
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §4  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Memory Resources.}
+
+Three read-only lookup tables implement the differential precoding
+and convolutional encoding operations.
+All three follow the distributed \ac{rom} pattern established by
+PL-02 (\texttt{crc\_rom.mem}) and PL-03 (\texttt{gf\_mul.mem}):
+they are loaded at simulation elaboration via \texttt{\$readmemh},
+carry the \texttt{rom\_style~=~"distributed"} synthesis attribute,
+and infer as distributed \ac{lut} logic without consuming any
+\ac{bram} tile.
+Their contents were pre-computed offline using the ANSpect J.83B
+reference implementation~\cite{ITU_J83}, with
+\texttt{write\_trellis\_roms.m} generating and writing the three
+\texttt{.mem} files; each table was verified by the script's own
+self-check against the MATLAB golden reference before use in
+simulation.
+Table~\ref{tab:pl07_rom_config} lists the depth, width, address
+mapping, data layout, and verification status of each \ac{rom}.
+
+\texttt{DPT\_ROM} is the largest of the three at $1024 \times 10$~bits.
+Its address indexes all combinations of the 2-bit precoder state
+\texttt{XYp} and the two 4-bit coded nibbles (\texttt{W\_nib} or
+\texttt{A\_nib}, and \texttt{Z\_nib} or \texttt{B\_nib}), giving
+$4 \times 16 \times 16 = 1{,}024$ entries.
+Its 10-bit output word encodes three fields: \texttt{[9:8]} is
+\texttt{new\_XYp}, the updated precoder state; \texttt{[7:4]} is
+\texttt{X\_nib}, the precoded A-stream nibble; and \texttt{[3:0]} is
+\texttt{Y\_nib}, the precoded B-stream nibble.
+
+\texttt{TTX\_ROM} and \texttt{TTY\_ROM} are each $256 \times 9$~bits.
+Both hold identical content, derived from the same BCC generator
+polynomials $G_1 = 25_8$ and $G_2 = 37_8$~\cite{ITU_J83}, because
+the A-stream and B-stream use the same convolutional code.
+They are nonetheless instantiated as two separate \acp{rom} because
+the RTL reads both simultaneously in a single clock cycle using
+different addresses — \texttt{\{Xq, X\_nib\}} for \texttt{TTX\_ROM}
+and \texttt{\{Yq, Y\_nib\}} for \texttt{TTY\_ROM} — so a single
+shared \ac{rom} could not serve both reads.
+Each 9-bit output word encodes a 4-bit next BCC state in
+\texttt{[8:5]} and five coded output bits in \texttt{[4:0]}, one
+per output symbol.
+
+Post-implementation reports show \texttt{LUT as Distributed RAM}~$= 0$
+for all three \acp{rom}.
+This was flagged as OI-07-04 during development: Vivado had
+constant-folded the \ac{rom} contents into combinational \ac{lut6}
+logic rather than inferring \ac{lut}-\ac{ram}, which is functionally
+equivalent but changes the utilization category.
+Board validation on the RFSoC~4x2 with a golden vector loopback
+confirmed correct C-word output and closed OI-07-04.
+
+\begin{table}[htbp]
+  \caption{PL-07 distributed \ac{rom} configuration. \texttt{TTX\_ROM}
+           and \texttt{TTY\_ROM} carry identical content but must be
+           separate instances because both are read simultaneously with
+           different addresses in the same clock cycle~\cite{ITU_J83}.}
+  \label{tab:pl07_rom_config}
+  \centering
+  \small
+  \begin{tabular}{lp{1.6cm}p{3.5cm}p{3.0cm}lc}
+    \hline
+    ROM & Depth$\times$Width & Address & Data layout & Synthesis & Verified \\
+    \hline
+    \texttt{DPT\_ROM}
+      & $1024\times10$
+      & \texttt{\{XYp[1:0], W\_nib, Z\_nib\}} or \texttt{\{XYp, A\_nib, B\_nib\}} (sync)
+      & \texttt{[9:8]}~new\_XYp;
+        \texttt{[7:4]}~X\_nib;
+        \texttt{[3:0]}~Y\_nib
+      & Distributed & 1024/1024 \\[4pt]
+    \texttt{TTX\_ROM}
+      & $256\times9$
+      & \texttt{\{Xq[3:0], X\_nib[3:0]\}}
+      & \texttt{[8:5]}~next\_Xq;
+        \texttt{[4:0]}~c4[4:0]
+      & Distributed & 256/256 \\[4pt]
+    \texttt{TTY\_ROM}
+      & $256\times9$
+      & \texttt{\{Yq[3:0], Y\_nib[3:0]\}}
+      & \texttt{[8:5]}~next\_Yq;
+        \texttt{[4:0]}~c0[4:0]
+      & Distributed & 256/256 \\
+    \hline
+    \multicolumn{6}{l}{\small Generator: \texttt{write\_trellis\_roms.m}.
+      Post-impl \texttt{LUT as Distributed RAM}~$= 0$: Vivado constant-folded
+      all three into LUT6 logic; board-validated correct (OI-07-04 CLOSED).} \\
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §5  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl07_datapath — omitted by author]
+
+Each non-sync trellis group follows two parallel paths through the
+\texttt{cword\_assemble} block: a coded path that passes two nibbles
+through a three-ROM lookup chain to produce one coded bit per symbol,
+and an uncoded path that wires thirty bits directly from
+\texttt{s\_axi\_tdata} to fixed C-word positions.
+Understanding the input bit partitioning is the prerequisite for
+following both paths.
+
+\textit{Input bit partitioning.}
+Table~\ref{tab:pl07_input_map} shows how the 38 effective bits of
+\texttt{s\_axi\_tdata[37:0]} are allocated across the five output
+symbols.
+Reading the table left to right: the Range column shows which 8-bit
+(or 6-bit for \texttt{sym[4]}) slice of \texttt{tdata} belongs to
+each symbol; the Coded~A and Coded~B columns identify the single
+W bit and single Z bit extracted from each symbol's slice for the
+coded path; and the Uncoded bits column lists the remaining six bit
+positions that bypass the coded path entirely.
+
+The four W bits from \texttt{sym[0]} through \texttt{sym[3]} —
+\texttt{tdata[37]}, \texttt{tdata[29]}, \texttt{tdata[21]},
+\texttt{tdata[13]} — are assembled into the 4-bit nibble
+\texttt{W\_nib[3:0]}.
+The four Z bits — \texttt{tdata[36]}, \texttt{tdata[28]},
+\texttt{tdata[20]}, \texttt{tdata[12]} — form \texttt{Z\_nib[3:0]}.
+These two nibbles are the only bits from the entire group that enter
+the ROM chain; all remaining 30~bits route directly to the uncoded
+C-word positions without any lookup.
+
+\texttt{sym[4]} has no W or Z entry.
+Its six bits \texttt{tdata[5:0]} are all uncoded.
+\texttt{sym[4]} still receives coded bits C4 and C0 in the output
+C-word — the ROM chain covers all five symbols in one pass — but those
+coded bits are determined by the nibbles from \texttt{sym[0]} through
+\texttt{sym[3]}, not by any separate \texttt{sym[4]}-specific coded
+input.
+
+\begin{table}[htbp]
+  \caption{PL-07 trellis group input bit allocation
+           (\texttt{s\_axi\_tdata[37:0]}, non-sync path)~\cite{ITU_J83}.
+           The W bits across \texttt{sym[0..3]} assemble
+           \texttt{W\_nib}~$= \{$\texttt{tdata[13]}, \texttt{tdata[21]},
+           \texttt{tdata[29]}, \texttt{tdata[37]}$\}$;
+           Z bits assemble
+           \texttt{Z\_nib}~$= \{$\texttt{tdata[12]}, \texttt{tdata[20]},
+           \texttt{tdata[28]}, \texttt{tdata[36]}$\}$.}
+  \label{tab:pl07_input_map}
+  \centering
+  \small
+  \begin{tabular}{lp{1.5cm}ccp{3.6cm}c}
+    \hline
+    Sym & Range & Coded A (W) & Coded B (Z) & Uncoded bits & Count \\
+    \hline
+    \texttt{sym[0]} & {[37:30]} & {[37]} & {[36]}
+      & {[35]},{[34]},{[33]},{[32]},{[31]},{[30]} & 8 \\[2pt]
+    \texttt{sym[1]} & {[29:22]} & {[29]} & {[28]}
+      & {[27]},{[26]},{[25]},{[24]},{[23]},{[22]} & 8 \\[2pt]
+    \texttt{sym[2]} & {[21:14]} & {[21]} & {[20]}
+      & {[19]},{[18]},{[17]},{[16]},{[15]},{[14]} & 8 \\[2pt]
+    \texttt{sym[3]} & {[13:6]}  & {[13]} & {[12]}
+      & {[11]},{[10]},{[9]},{[8]},{[7]},{[6]}     & 8 \\[2pt]
+    \texttt{sym[4]} & {[5:0]}   & ---    & ---
+      & {[5]},{[4]},{[3]},{[2]},{[1]},{[0]}       & 6 \\
+    \hline
+    \multicolumn{6}{l}{\small Total: 38 effective bits.
+      \texttt{tdata[39:38]}~$=$~\texttt{2'b00} padding from PL-06;
+      unused by PL-07.} \\
+  \end{tabular}
+\end{table}
+
+\textit{ROM lookup chain.}
+With \texttt{W\_nib} and \texttt{Z\_nib} established,
+Figure~\ref{fig:pl07_rom_chain} shows how they flow through the
+three-ROM chain alongside the registered trellis state to produce all
+five coded output bits per symbol.
+The figure is organized left to right: the Inputs box on the left
+holds the five signals entering the chain, the three ROM blocks in
+the centre execute the lookups, and the Outputs box on the right
+collects the coded bits.
+
+% [ALT: Block diagram titled Trellis coding ROM lookup chain for one
+%       group. On the left an Inputs box contains W_nib[3:0] and
+%       Z_nib[3:0] extracted from s_axi_tdata, XYp[1:0] labeled
+%       differential precoder state, Xq[3:0] labeled BCC A-stream
+%       state, and Yq[3:0] labeled BCC B-stream state. W_nib, Z_nib,
+%       and XYp feed DPT_ROM with label DPT_ROM address = XYp W_nib
+%       Z_nib. DPT_ROM (1024 x 10-bit, Differential Precoder Table)
+%       outputs new_XYp[1:0], X_nib[3:0], and Y_nib[3:0]. X_nib
+%       and Xq feed TTX_ROM with label TTX_ROM A-stream address =
+%       Xq X_nib. Y_nib and Yq feed TTY_ROM with label TTY_ROM
+%       B-stream address = Yq Y_nib. TTX_ROM (256 x 9-bit, BCC
+%       Trellis Table A-stream) outputs next_Xq[3:0] and c4[4:0].
+%       TTY_ROM (256 x 9-bit, BCC Trellis Table B-stream) outputs
+%       next_Yq[3:0] and c0[4:0]. An Outputs box on the right
+%       collects c4[4:0] and c0[4:0] labeled for sym[0..4]. Three
+%       feedback arrows curve along the bottom labeled feedback loop
+%       back to XYp input, feedback loop back to Xq, and feedback
+%       loop back to Yq. A key at the lower right notes TTX and TTY
+%       are read simultaneously at different addresses, state
+%       registers persist across all groups and frames and reset only
+%       on rst_n, c4 and c0 carry one coded bit per output symbol,
+%       and sym[4] has no W or Z input.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.90\linewidth]{figures/ch4/ch4_pl07_rom_chain}
+  \caption{Trellis coding \ac{rom} lookup chain for one trellis group.
+           Five signals enter on the left: two nibbles assembled from
+           \texttt{s\_axi\_tdata} (established in
+           Table~\ref{tab:pl07_input_map}) and three registered state
+           values. Two coded output vectors exit on the right; all
+           three state values are updated through the feedback
+           arrows~\cite{ITU_J83}.}
+  \label{fig:pl07_rom_chain}
+\end{figure}
+
+\FloatBarrier
+
+\textit{Step 1 — DPT lookup.}
+\texttt{W\_nib}, \texttt{Z\_nib}, and the 2-bit differential precoder
+state \texttt{XYp} are concatenated to form the 10-bit
+\texttt{DPT\_ROM} address: \texttt{\{XYp, W\_nib, Z\_nib\}}.
+The lookup implements the differential precoding operation of J.83B
+\S\,B.5.5.3~\cite{ITU_J83}: it maps the raw coded nibbles through the
+precoder state to remove 90° phase ambiguity at the receiver.
+The 10-bit output word returns three fields — \texttt{new\_XYp[1:0]}
+in bits~[9:8], the precoded A-stream nibble \texttt{X\_nib[3:0]} in
+bits~[7:4], and the precoded B-stream nibble \texttt{Y\_nib[3:0]} in
+bits~[3:0].
+\texttt{X\_nib} and \texttt{Y\_nib} carry no direct output
+significance; they exist solely to address the next stage.
+During \texttt{SYNC\_EMIT} the DPT address is muxed to
+\texttt{\{XYp, A\_nib, B\_nib\}}, where \texttt{A\_nib} and
+\texttt{B\_nib} are derived from the accumulated
+\texttt{sync\_buf} trailer field rather than live \texttt{tdata}
+nibbles, but the ROM and its output format are identical on both paths.
+
+\textit{Step 2 — TTX and TTY parallel lookup.}
+\texttt{X\_nib} from the DPT output and the 4-bit BCC A-stream state
+\texttt{Xq} are concatenated to address \texttt{TTX\_ROM}:
+\texttt{\{Xq, X\_nib\}}.
+\texttt{Y\_nib} and the BCC B-stream state \texttt{Yq} address
+\texttt{TTY\_ROM}: \texttt{\{Yq, Y\_nib\}}.
+Both lookups fire simultaneously in the same clock cycle, each reading
+a different address from a separate \ac{rom} instance.
+This is why two physically distinct ROMs are required even though
+their contents are identical — a single shared ROM cannot serve two
+independent addresses in one cycle.
+\texttt{TTX\_ROM} returns a 9-bit word: \texttt{next\_Xq[3:0]} in
+bits~[8:5] and the five coded A-stream output bits
+\texttt{c4[4:0]} in bits~[4:0], where \texttt{c4[n]} is the C4 coded
+bit for output symbol~$n$.
+\texttt{TTY\_ROM} returns the same layout for the B-stream:
+\texttt{next\_Yq[3:0]} in bits~[8:5] and \texttt{c0[4:0]} in
+bits~[4:0], where \texttt{c0[n]} is the C0 coded bit for symbol~$n$.
+All five C4 bits and all five C0 bits for the complete group are
+therefore available simultaneously after a single combinational pass
+through the chain.
+
+\textit{Step 3 — Feedback arrows and trellis state lifecycle.}
+The three arrows looping back along the bottom of
+Figure~\ref{fig:pl07_rom_chain} represent the three registered trellis
+state values \texttt{XYp}, \texttt{Xq}, and \texttt{Yq}.
+These registers have a defined lifecycle across the full transmission
+sequence.
+
+\textit{Starting value.}
+On \texttt{rst\_n} assertion, all three registers clear to zero:
+\texttt{XYp}~$= \texttt{2'h0}$, \texttt{Xq}~$= \texttt{4'h0}$,
+\texttt{Yq}~$= \texttt{4'h0}$.
+Frame~0 group~0 therefore enters the DPT with
+\texttt{dpt\_addr}~$= \texttt{\{2'h0, W\_nib, Z\_nib\}}$, and both
+trellis ROMs with \texttt{Xq}~$= 0$ and \texttt{Yq}~$= 0$.
+
+\textit{Per-group update.}
+After each group completes the ROM chain, the three new values are
+written back into the registers on the next clock edge — this is what
+the feedback arrows represent.
+For a non-sync group, the write is gated by
+\texttt{nonsync\_input\_en} (the input handshake in \texttt{IDLE}
+with \texttt{sync\_flag} deasserted).
+For a sync group, it is gated by \texttt{sync\_state\_en} after each
+non-final \texttt{SYNC\_EMIT} output handshake and by
+\texttt{sync\_emit\_done} after the final one.
+The updated registers then serve as the input state for the next group's
+lookup, which is the feedback path shown in the figure.
+
+\textit{End of frame.}
+The frame ends when the fifth and final sync bundle is consumed by PL-08,
+firing \texttt{sync\_emit\_done}.
+On that same clock edge the last \texttt{new\_XYp},
+\texttt{next\_Xq}, and \texttt{next\_Yq} — computed from the fifth
+sync group's ROM lookup — are written into the registers.
+The module then transitions to \texttt{IDLE} holding these
+end-of-frame values.
+No clear, freeze, or special handling occurs at the frame boundary.
+
+\textit{Cross-frame continuity.}
+Group~0 of frame~$N\!+\!1$ reads the same \texttt{XYp},
+\texttt{Xq}, and \texttt{Yq} that were written by
+\texttt{sync\_emit\_done} of frame~$N$.
+The state is therefore continuous and uninterrupted across frame
+boundaries, as J.83B \S\,B.5.5 requires~\cite{ITU_J83}.
+\texttt{rst\_n} is the only path back to zero, and it is not asserted
+between frames during normal operation.
+Testbench check~G10b confirms this directly: the trellis state
+recorded at frame~1 group~0 equals the final state recorded after
+frame~0 \texttt{SYNC\_EMIT}, with no reset in between.
+
+\textit{C-word output mapping.}
+With \texttt{c4[n]} and \texttt{c0[n]} now defined,
+Table~\ref{tab:pl07_output_map} shows how the ROM outputs and the
+uncoded bits from Table~\ref{tab:pl07_input_map} combine into each
+8-bit C-word.
+The three stacked header rows label each bit column: bit index within
+the byte (7 down to~0), J.83B signal name C7 down to C0~\cite{ITU_J83},
+and source type.
+Reading the source row, six of the eight bit positions carry uncoded
+data and two carry ROM output.
+Bits~7, 6, and~5 (C7, C6, C5) wire the three upper uncoded bits
+directly from the \texttt{tdata} positions listed in
+Table~\ref{tab:pl07_input_map}; bits~3, 2, and~1 (C3, C2, C1) wire
+the three lower uncoded bits.
+Bit~4 (C4) is driven by \texttt{c4[n]} from \texttt{TTX\_ROM} and
+bit~0 (C0) is driven by \texttt{c0[n]} from \texttt{TTY\_ROM}, both
+established in Step~2 above.
+C4 and C0 occupy these specific positions because they are the
+differentially encoded bits defined by J.83B \S\,B.5.5.5: placing
+the coded bits at positions~4 and~0 gives the receiver the
+rotational invariance needed to resolve 90° phase slips without
+requiring \ac{fec} resynchronization~\cite{ITU_J83}.
+
+Reading one data row in full: for \texttt{sym[0]}, C7 sources from
+\texttt{tdata[33]}, C6 from \texttt{tdata[34]}, C5 from
+\texttt{tdata[35]} — the three upper uncoded positions of the
+\texttt{sym[0]} range after the W bit at \texttt{[37]} and Z bit at
+\texttt{[36]} are removed; C4 comes from \texttt{c4[0]};
+C3 sources from \texttt{tdata[30]}, C2 from \texttt{tdata[31]},
+C1 from \texttt{tdata[32]} — the three lower uncoded positions; and
+C0 comes from \texttt{c0[0]}.
+The same structure repeats for \texttt{sym[1]} through
+\texttt{sym[4]}, with the tdata indices descending in groups of eight
+as each symbol slot steps down through the \texttt{tdata} range.
+The footer packing formula,
+\texttt{m\_axi\_tdata}~$=$~\texttt{\{sym[4][7:0], sym[3][7:0],
+sym[2][7:0], sym[1][7:0], sym[0][7:0]\}},
+is the 40-bit word delivered to PL-08 on each output handshake.
+
+\begin{sidewaystable}
+  \caption{PL-07 C-word output bit-field mapping (non-sync
+           path)~\cite{ITU_J83}. Header row~1: bit index. Header
+           row~2: J.83B name (\S\,B.5.5.5). Header row~3: source.
+           \texttt{c4[n]}~$=$~\texttt{ttx\_data[n]};
+           \texttt{c0[n]}~$=$~\texttt{tty\_data[n]};
+           \texttt{td}~$=$~\texttt{s\_axi\_tdata}.
+           Packing: \texttt{m\_axi\_tdata}~$=$
+           \texttt{\{sym[4][7:0], sym[3][7:0], sym[2][7:0],
+           sym[1][7:0], sym[0][7:0]\}}.}
+  \label{tab:pl07_output_map}
+  \centering
+  \small
+  \begin{tabular}{lcccccccc}
+    \hline
+    Symbol    & Bit 7   & Bit 6   & Bit 5   & Bit 4    & Bit 3   & Bit 2   & Bit 1   & Bit 0 \\
+              & C7      & C6      & C5      & C4       & C3      & C2      & C1      & C0 \\
+              & uncoded & uncoded & uncoded & TTX\_ROM & uncoded & uncoded & uncoded & TTY\_ROM \\
+    \hline
+    \texttt{sym[0]} & td{[33]} & td{[34]} & td{[35]} & c4{[0]} & td{[30]} & td{[31]} & td{[32]} & c0{[0]} \\[2pt]
+    \texttt{sym[1]} & td{[25]} & td{[26]} & td{[27]} & c4{[1]} & td{[22]} & td{[23]} & td{[24]} & c0{[1]} \\[2pt]
+    \texttt{sym[2]} & td{[17]} & td{[18]} & td{[19]} & c4{[2]} & td{[14]} & td{[15]} & td{[16]} & c0{[2]} \\[2pt]
+    \texttt{sym[3]} & td{[9]}  & td{[10]} & td{[11]} & c4{[3]} & td{[6]}  & td{[7]}  & td{[8]}  & c0{[3]} \\[2pt]
+    \texttt{sym[4]} & td{[3]}  & td{[4]}  & td{[5]}  & c4{[4]} & td{[0]}  & td{[1]}  & td{[2]}  & c0{[4]} \\
+    \hline
+  \end{tabular}
+\end{sidewaystable}
+
+\textit{Parallel output design.}
+Because the DPT, \texttt{TTX\_ROM}, and \texttt{TTY\_ROM} all resolve
+combinationally in a single pass, all five C-words are assembled and
+registered into \texttt{out\_reg} in one clock cycle.
+This eliminates the 5-cycle burst serializer that a symbol-by-symbol
+approach would require, reduces output latency by 4~cycles per group,
+and keeps the non-sync path at a strict 1:1 input-to-output
+ratio~\cite{ITU_J83}.
+
+\textit{tdata\_rev generate block — sync path only.}
+The sync path introduces one additional preprocessing step before
+\texttt{sync\_buf} is loaded.
+PL-06 delivers groups \ac{msb}-first, so \texttt{tdata[37]} is the
+first frame bit and \texttt{tdata[0]} is the last.
+The stride-30 and stride-8 extractions performed during
+\texttt{SYNC\_EMIT} require frame-order storage in \texttt{sync\_buf}
+with \texttt{sync\_buf[0]} equal to the first frame bit.
+Loading \texttt{sync\_buf} directly from \texttt{s\_axi\_tdata} would
+store each 38-bit group with its bits reversed, making every uncoded
+and trailer extraction wrong.
+A 38-way combinational generate block corrects this:
+$\texttt{tdata\_rev}[i] = \texttt{s\_axi\_tdata}[37-i]$ for
+$i = 0 \ldots 37$, so \texttt{tdata\_rev[0]} holds the first frame
+bit.
+\texttt{sync\_buf} is always loaded from \texttt{tdata\_rev} rather
+than from the raw port.
+The non-sync path is unaffected — it reads \texttt{s\_axi\_tdata}
+directly through the fixed bit-position localparams.
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-06
+\texttt{frame\_sync\_enc}):}
+\begin{itemize}
+  \item Accepts 38-bit trellis groups as 40-bit tdata with
+        \texttt{[39:38]}~$=$~\texttt{2'b00}; one group per handshake,
+        no partial-group input~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tready} is 1 in \texttt{IDLE} and
+        \texttt{SYNC\_ACCUM}; 0 in \texttt{EMIT} and
+        \texttt{SYNC\_EMIT}.
+        PL-06 must hold \texttt{tdata} and \texttt{tvalid} stable
+        while \texttt{s\_tready}~$= 0$~\cite{ARM_IHI0022}.
+  \item The module is ready to accept data the cycle after
+        \texttt{rst\_n} is released; no warm-up window is required.
+  \item \texttt{s\_axi\_tlast} must be asserted on group~2{,}075 and
+        on no other group.
+        \texttt{grp\_cnt} resets to zero on the same cycle that
+        \texttt{s\_tlast}~$= 1$ is accepted, ensuring the first group
+        of the following frame evaluates \texttt{sync\_flag} with a
+        correct counter value of~0.
+  \item Trellis state \texttt{XYp}/\texttt{Xq}/\texttt{Yq} freezes
+        during any \texttt{tvalid}~$= 0$ gap between frames and is
+        preserved for the first group of the next
+        frame~\cite{ITU_J83}.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-08
+\texttt{qam256\_map}):}
+\begin{itemize}
+  \item Delivers one 40-bit C-word bundle per input group (1:1,
+        no burst).
+        \texttt{m\_tdata[7:0]}~$=$~\texttt{sym[0]},
+        \texttt{m\_tdata[39:32]}~$=$~\texttt{sym[4]}; all 40~bits
+        carry data.
+  \item \texttt{m\_axi\_tvalid} is registered; it asserts one clock
+        after the non-sync input handshake or one clock after
+        \texttt{sync\_load\_en} fires during \texttt{SYNC\_EMIT}.
+  \item \texttt{m\_axi\_tlast} asserts on the final output of each
+        \ac{fec} frame — the 5th \texttt{SYNC\_EMIT} bundle of
+        group~2{,}075 only.
+        It is registered, gated by \texttt{out\_valid\_reg}, and
+        cleared after the downstream handshake.
+  \item Backpressure: \texttt{m\_tready}~$= 0$ stalls output and
+        propagates \texttt{s\_tready}~$= 0$ upstream to
+        PL-06~\cite{ARM_IHI0022}.
+        PL-07 holds \texttt{m\_tdata} and \texttt{m\_tvalid} stable
+        throughout the stall.
+  \item In \texttt{SYNC\_EMIT}, \texttt{m\_axi\_tvalid} has a 1-cycle
+        gap between successive outputs while \texttt{out\_reg} reloads.
+        PL-08 must tolerate non-consecutive valid assertion.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+
+\begin{table}[!h]
+  \caption{PL-07 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517}, speed-grade~$-2$ PRODUCTION,
+           Vivado~2024.2, 03~Aug~2026; 250\,MHz run).}
+  \label{tab:pl07_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource        & Used  & Available   & Utilization \\
+    \hline
+    LUT (Logic)     & 193   & 425{,}280   & 0.05\%       \\[2pt]
+    LUT (Memory)    & 0     & 213{,}600   & 0.00\%$^{*}$ \\[2pt]
+    CLB Registers   & 260   & 850{,}560   & 0.03\%       \\[2pt]
+    BRAM Tile       & 0     & 1{,}080     & 0.00\%       \\[2pt]
+    URAM            & 0     & 80          & 0.00\%       \\[2pt]
+    DSP             & 0     & 4{,}272     & 0.00\%       \\[2pt]
+    CLBs            & 40    & 53{,}160    & 0.08\%       \\
+    \hline
+    \multicolumn{4}{l}{\small $^{*}$LUT (Memory)~$= 0$: all three ROM tables constant-folded by Vivado into LUT6 logic;} \\
+    \multicolumn{4}{l}{\small \phantom{$^{*}$}verified correct by board loopback (OI-07-04 CLOSED). LUT breakdown: LUT6~$= 158$,} \\
+    \multicolumn{4}{l}{\small \phantom{$^{*}$}LUT5~$= 26$, remainder LUT2/LUT3. All 260 FFs are FDRE.} \\
+    \multicolumn{4}{l}{\small CLB count: 40 at 250\,MHz; 43 at 100\,MHz (placer packing only; LUT/FF totals unchanged).} \\
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-07 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517}, speed-grade~$-2$ PRODUCTION,
+           Vivado~2024.2, 03~Aug~2026).}
+  \label{tab:pl07_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                & 250\,MHz             & 100\,MHz           \\
+    \hline
+    WNS, setup            & $+1.740$\,ns (MET)   & $+7.398$\,ns (MET) \\[2pt]
+    WHS, hold             & $+0.047$\,ns (MET)   & $+0.059$\,ns (MET) \\[2pt]
+    TNS                   & 0.000\,ns            & 0.000\,ns          \\[2pt]
+    Est.\ $F_{\max}$      & $\approx 442$\,MHz   & $\approx 384$\,MHz \\[2pt]
+    Failing endpoints     & 0                    & 0                  \\
+    \hline
+    \multicolumn{3}{l}{\small Worst setup path (250\,MHz): \texttt{state\_reg[1]}~$\to$~\texttt{out\_reg\_reg[24]};} \\
+    \multicolumn{3}{l}{\small \phantom{Worst: }2.161\,ns total (logic 0.664\,ns / route 1.497\,ns); 5 levels (LUT2$\times$1, LUT3$\times$1, LUT6$\times$3).} \\
+    \multicolumn{3}{l}{\small 250\,MHz placer is more aggressive; 442\,MHz is the representative $F_{\max}$.} \\
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used the master testbench
+\texttt{trellis\_enc\_master\_tb.sv} (43~checks, 10~\ac{sva}
+assertions, 0~failures).
+Checks G1--G6 and the golden vector sweep T1 were carried forward
+from the simple testbench.
+G1a--G1d confirmed correct \ac{fsm} transitions from cold reset
+through both the non-sync path
+(\texttt{IDLE}$\to$\texttt{EMIT}$\to$\texttt{IDLE}) and the sync
+path (\texttt{SYNC\_ACCUM} entry at group~2{,}071).
+G2a--G2c confirmed the registered \texttt{m\_tvalid} timing.
+G3a--G3c verified C-word assembly for zero-input, single-uncoded-bit,
+and coded-path inputs, directly confirming the uncoded wiring and
+ROM lookup paths described in Table~\ref{tab:pl07_output_map}.
+G5b confirmed the trellis state update after a coded-path input,
+with \texttt{Xq}~$= \texttt{0xF}$, \texttt{Yq}~$= \texttt{0xF}$,
+\texttt{XYp}~$= 3$ matching the DPT$\to$\ac{ttx}$/$\ac{tty} chain
+output for the test vector.
+G6b confirmed output stability for 20~cycles under
+\texttt{m\_tready}~$= 0$ backpressure.
+T1 swept 8{,}304/8{,}304 trellis groups across 4~full \ac{fec} frames
+(250~packets, 47{,}000 input bytes) against
+\texttt{stage6\_trellis\_cwords.bin}, covering all non-sync and sync
+groups with continuous trellis state.
+
+Master testbench additions G7--G10 verified the frame-boundary
+counter and routing logic: G7d confirmed the v2.1 fix that frame~1
+group~0 routes to \texttt{EMIT} and not to \texttt{SYNC\_ACCUM};
+G7e confirmed \texttt{grp\_cnt}~$= 0$ immediately after the
+group~2{,}075 handshake.
+G8a--G8e verified \texttt{SYNC\_ACCUM}/\texttt{SYNC\_EMIT} sequencing
+including the 1-cycle valid gap between consecutive outputs (G8e).
+G9a--G9e verified \texttt{m\_axi\_tlast} behaviour: exactly 4
+assertions across 8{,}304 outputs (G9e), only on the 5th sync
+output (G9c), cleared by frame~1 group~0 (G9d).
+G10a--G10e verified per-frame trellis state handoff, confirming that
+\texttt{XYp}/\texttt{Xq}/\texttt{Yq} at the start of frame~1
+equal the values at the end of frame~0 with no reset in between.
+
+The 10 \ac{sva} assertions confirmed: no X-propagation on
+\texttt{m\_tdata} while valid; output stability during downstream
+stalls; \texttt{s\_tready}~$= 1$ only in \texttt{IDLE} or
+\texttt{SYNC\_ACCUM}; \texttt{m\_tlast} only in \texttt{SYNC\_EMIT};
+and valid \ac{fsm} and \texttt{XYp} states at all times.
+TIMING-18 warnings for unspecified I/O delays are expected for
+standalone synthesis without a system XDC and carry no functional
+impact.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-07 hardware validation summary.}
+  \label{tab:pl07_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \texttt{trellis\_enc} standalone deployment
+      & 250\,MHz
+      & RFSoC~4x2 \ac{axi} \ac{dma} golden vector loopback~\cite{PYNQ_DOC};
+        \texttt{stage5\_framesync\_bits.bin}
+        (315{,}552 bytes; 4~\ac{fec} frames) applied via DMA;
+        C-word output compared byte-for-byte against
+        \texttt{stage6\_trellis\_cwords.bin}
+        (41{,}520 bytes; 4~frames~$\times$~2{,}076~groups~$\times$~5 cwords)
+      & 8{,}304/8{,}304 groups matched;
+        all 4~frames PASS;
+        \ac{rom} synthesis correctness confirmed
+        (OI-07-04 CLOSED)
+      & 03-Aug-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-07 was performed as a standalone deployment
+at 250\,MHz on the RFSoC~4x2 board using an \ac{axi} \ac{dma}
+loopback test.
+The input vector \texttt{stage5\_framesync\_bits.bin} was written to
+the module via DMA and the C-word output was read back and compared
+against the pre-computed MATLAB golden reference
+\texttt{stage6\_trellis\_cwords.bin}.
+Byte-exact agreement across all 8{,}304 output groups confirms that
+the DPT$\to$\ac{ttx}$/$\ac{tty} \ac{rom} chain synthesized correctly
+and that trellis state continuity holds across the full four-frame
+sequence, resolving OI-07-04.
+Post-implementation timing at the 250\,MHz constraint confirms
+$F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timing}).
+
+\clearpage
 
 \subsection{PL-08: QAM-256 Mapper}
 \label{subsec:pl08}
