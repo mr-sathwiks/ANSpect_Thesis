@@ -1876,10 +1876,490 @@ $F_{\max} \approx 361.8$\,MHz~(Table~\ref{tab:pl05_timing}).
 
 %\clearpage
 
+% ============================================================
+% CH-4.3.6  PL-06: FRAME_SYNC_ENC
+% Source : PL-06_FRAME_SYNC_ENC_handoff.md v2.2  27-Jul-2026
+%          frame_sync_enc.sv v2.2
+%          PL-11_anspect_ctrl_regs_handoff.md v2.0 (ctrl_word source)
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.6 [PL-06] — PASS  22-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [OMITTED — author]  IMG-4 [x]  IMG-5 [x]
+% Expanded  : 22-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+%   Structure: §3 FSM → §4 RTL Architecture
+%   Memory Resources: N/A — trailer constants are localparams; no ROM/BRAM
+% ============================================================
+
 \subsection{PL-06: Frame Sync Encoder}
 \label{subsec:pl06}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.6] + handoff for PL-06
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The frame sync encoder module (PL-06) implements the J.83B Annex~B frame
+synchronisation stage specified in \S\,B.5.3 of the standard~\cite{ITU_J83}.
+It serializes the 11{,}264 randomized 7-bit symbols of one \ac{fec} frame into
+a continuous bit stream, appends the 40-bit frame sync trailer, and packs the
+result into 2{,}076 consecutive 38-bit trellis groups for the trellis encoder
+(PL-07).
+The algorithmic background — frame arithmetic, trailer structure, and trellis
+group boundaries — is presented in Section~\ref{sec:framesync}; this section
+covers its hardware realization.
+The module is hand-coded SystemVerilog (\texttt{frame\_sync\_enc.sv},
+revision~v2.2), operates as an \ac{axi}4-Stream slave-to-master pair at
+the 250\,MHz \ac{pl} fabric clock, and carries a testbench status of
+TB-PASS (43/43 checks, 0 failures).
+
+Figure~\ref{fig:pl06_pipeline} shows the pipeline position of PL-06.
+Unlike PL-02 through PL-05, which carry byte-wide symbol streams on an
+8-bit bus, PL-06 changes the bus width: the 8-bit input from PL-05 carries
+one 7-bit symbol per transfer, while the 40-bit output delivers 38-bit
+trellis groups to PL-07.
+PL-11 (\texttt{anspect\_ctrl\_regs}), shown above PL-06 in the figure,
+supplies a 4-bit \texttt{ctrl\_word} sideband from its
+\texttt{FRAME\_SYNC\_CW} register at \ac{axi}4-Lite offset~\texttt{0x20};
+this value is embedded as the upper nibble of the fifth trailer byte and
+must be written by the processing system before the TX chain is enabled.
+
+% [ALT: Block diagram. Top row: PL-11 anspect_ctrl_regs block with a
+%       labeled 4-bit ctrl_word arrow pointing down to PL-06. Main row
+%       (left to right): PL-05 RANDOMIZER connected by 8-bit AXI-S arrow
+%       to PL-06 FRAME_SYNC_ENC (highlighted green), connected by 40-bit
+%       AXI-S arrow to PL-07 TRELLIS_ENC. A 250 MHz PL clock label
+%       appears at the lower left; no CDC markers at any boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_pl06_pipeline}
+  \caption{Pipeline position of PL-06 \texttt{frame\_sync\_enc}.
+           The \texttt{ctrl\_word[3:0]} sideband is driven from PL-11
+           \texttt{anspect\_ctrl\_regs} (\texttt{FRAME\_SYNC\_CW},
+           \ac{axi}4-Lite offset~\texttt{0x20}).}
+  \label{fig:pl06_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl06_ip_block} shows the packaged core in Vivado \ac{ip}
+Integrator.
+Compared to PL-02 through PL-05, two additional ports are visible:
+\texttt{ctrl\_word[3:0]} on the left side receives the frame sync control
+word from PL-11, and \texttt{m\_axi\_tlast} on the right side carries the
+frame boundary signal to PL-07.
+The port list is given in Table~\ref{tab:pl06_ports}.
+
+% [ALT: Screenshot of the frame_sync_enc IP core in Vivado IP Integrator.
+%       The block is labeled frame_sync_enc with subtitle J.83B Frame Sync
+%       Encoder (PL-06) (Pre-Production). On the left: s_axi slave group
+%       with s_axi_tdata[7:0], s_axi_tvalid, s_axi_tready; control ports
+%       clk, rst_n; and ctrl_word[3:0]. On the right: m_axi master group
+%       with m_axi_tdata[39:0], m_axi_tlast, m_axi_tvalid, m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.58\linewidth]{figures/ch4/ch4_pl06_ip_block}
+  \caption{PL-06 \texttt{frame\_sync\_enc} packaged as a Vivado \ac{ip}
+           core in \ac{ip} Integrator, showing the \texttt{s\_axi} slave,
+           \texttt{m\_axi} master, \texttt{ctrl\_word[3:0]} sideband, and
+           \texttt{m\_axi\_tlast} ports.}
+  \label{fig:pl06_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-06 \texttt{frame\_sync\_enc} port list.}
+  \label{tab:pl06_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock                  & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset                  & Synchronous active-low \\[2pt]
+    \texttt{ctrl\_word}     & in   & 4     & Sideband               & Interleaver depth ctrl word from PL-11; quasi-static \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 8     & \ac{axi}4-Stream slave & 7-bit randomized symbol from PL-05; bit~7 always 0 \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave & Upstream data valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave & State-dependent; pulses every 7~clocks in DATA \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 40    & \ac{axi}4-Stream master & 38-bit trellis group to PL-07; bits~[39:38]~$=$~\texttt{2'b00} \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master & Downstream data valid; registered \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master & Downstream backpressure \\[2pt]
+    \texttt{m\_axi\_tlast}  & out  & 1     & \ac{axi}4-Stream master & Frame boundary; asserted on group~2{,}075 only \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  FSM
+% ------------------------------------------------------------------
+
+\paragraph{FSM.}
+
+PL-06 processes one \ac{fec} frame at a time through a fixed three-stage
+sequence: wait, serialize, emit trailer.
+Figure~\ref{fig:pl06_fsm} shows the state diagram with the three states
+arranged in a clockwise cycle, each corresponding directly to one of these tasks.
+
+% [ALT: State diagram with three circular states arranged clockwise.
+%       IDLE(0) top-left: s_tready=pipe_en, m_tvalid=out_valid. DATA(1)
+%       top-right: s_tready=(bit_cnt==6) and pipe_en and (sym_cnt!=11264),
+%       m_tvalid=out_valid. TRAILER(2) bottom-centre: s_tready=0 hard,
+%       m_tvalid=out_valid. A dashed reset arc enters IDLE. IDLE to DATA:
+%       input_handshake. DATA to TRAILER: sym_cnt==11264 and bit_cnt==6
+%       and pipe_en. TRAILER to IDLE: trailer_cnt==39 and grp_done.
+%       Default to IDLE (synthesis safety).]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.70\linewidth]{figures/ch4/ch4_pl06_fsm}
+  \caption{PL-06 \ac{fsm} state transition diagram.
+           \texttt{input\_hs}: \texttt{s\_axi\_tvalid \&\ s\_axi\_tready};
+           \texttt{grp\_done}: \texttt{accum\_cnt}~$= 37$ and
+           \texttt{accum\_en}.
+           One-hot synthesis: IDLE state \ac{ff} is \texttt{FDSE}
+           (synchronous set on reset).}
+  \label{fig:pl06_fsm}
+\end{figure}
+
+\FloatBarrier
+
+\texttt{IDLE} is the reset state.
+\texttt{out\_valid} is low after a frame boundary reset, so \texttt{pipe\_en}
+asserts and \texttt{s\_axi\_tready} is driven high.
+The first input handshake from PL-05 latches the first symbol and transitions
+the module to \texttt{DATA}.
+
+\texttt{DATA} is the main serialization loop.
+The module accepts one 7-bit symbol every 7~clock cycles: the accepted symbol
+is latched into \texttt{sym\_reg} and its 7~bits are shifted \ac{msb}-first
+into the 38-bit accumulator at one bit per clock.
+\texttt{s\_axi\_tready} asserts only at \texttt{bit\_cnt}~$= 6$, creating
+a 1:7 upstream duty cycle — PL-05 is granted one transfer window every
+7~clocks.
+Every 38 accumulated bits, \texttt{grp\_done} fires and the completed
+38-bit group is latched into \texttt{out\_reg} with \texttt{out\_valid}
+set, making it available to PL-07.
+This continues for all 11{,}264 symbols.
+When the last bit of the 11{,}264th symbol is serialized
+(\texttt{sym\_cnt}~$= 11{,}264$, \texttt{bit\_cnt}~$= 6$),
+\texttt{last\_sym\_last\_bit} triggers and the module transitions to
+\texttt{TRAILER}.
+
+\texttt{TRAILER} emits the 40-bit J.83B frame sync trailer~\cite{ITU_J83}.
+\texttt{s\_axi\_tready} is hard-deasserted for the entire trailer window,
+blocking upstream PL-05 for approximately 40~clock cycles.
+The same 38-bit accumulator continues uninterrupted — only the bit source
+changes from \texttt{sym\_reg} to the combinational trailer \ac{lut}
+indexed by \texttt{trailer\_cnt[5:0]}.
+The 40~trailer bits complete group~2{,}074 (36 data bits already in the
+accumulator are joined by the first 2 trailer bits) and fill
+group~2{,}075 (38 trailer bits exclusively).
+When \texttt{trailer\_cnt}~$= 39$ and \texttt{grp\_done} fires,
+group~2{,}075 is latched with \texttt{out\_tlast}~$= 1$,
+all counters reset, and the module returns to \texttt{IDLE}.
+
+Table~\ref{tab:pl06_fsm} gives the handshake signal values per state.
+\texttt{pipe\_en} asserts when no group is pending (\texttt{out\_valid}~$= 0$)
+or when the pending group is being consumed (\texttt{output\_handshake}),
+and gates all datapath advances.
+
+\begin{table}[htbp]
+  \caption{PL-06 \ac{fsm} state summary.}
+  \label{tab:pl06_fsm}
+  \centering
+  \small
+  \begin{tabular}{lp{4.0cm}lp{6.5cm}}
+    \hline
+    State             & \texttt{s\_axi\_tready}      & \texttt{m\_axi\_tvalid} & Task \\
+    \hline
+    \texttt{IDLE}     & \texttt{pipe\_en}             & \texttt{out\_valid}
+                      & Awaiting first symbol; output pipeline may still be draining \\[4pt]
+    \texttt{DATA}     & \texttt{bit\_cnt}~$= 6$,
+                        \texttt{pipe\_en},
+                        \texttt{sym\_cnt}~$\neq 11{,}264$
+                      & \texttt{out\_valid}
+                      & Serializing 11{,}264 symbols into 38-bit groups at 1:7 input duty cycle \\[4pt]
+    \texttt{TRAILER}  & \texttt{0} (hard)
+                      & \texttt{out\_valid}
+                      & Emitting 40-bit frame sync trailer; upstream fully blocked \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §4  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+% Memory Resources: N/A — trailer bytes synthesised as localparams;
+%                  no ROM files, no BRAM, no $readmemh required.
+
+\paragraph{RTL Architecture.}
+% [FIGURE OMITTED: datapath diagram figures/ch4_pl06_datapath — omitted by author]
+
+With the \ac{fsm} established, this section describes how each state's
+task is realized in hardware.
+
+\textit{Accumulator pipeline.}
+The 38-bit shift register \texttt{accum[37:0]} accepts one bit per clock
+when \texttt{accum\_en} asserts:
+$\mathtt{accum} \leftarrow \{\mathtt{accum}[36:0],\,\mathtt{current\_bit}\}$.
+A companion counter \texttt{accum\_cnt[5:0]} tracks the number of bits
+written; when \texttt{accum\_cnt}~$= 37$ and \texttt{accum\_en} fire
+simultaneously, \texttt{grp\_done} pulses.
+On \texttt{grp\_done}, \texttt{out\_reg} latches the completed 38-bit
+group, \texttt{accum} and \texttt{accum\_cnt} reset to zero, and
+\texttt{out\_valid} is set.
+This pipeline is shared between \texttt{DATA} and \texttt{TRAILER} — only
+the source of \texttt{current\_bit} changes between states.
+
+\textit{Bit serializer.}
+In \texttt{DATA}, \texttt{current\_bit} is driven by the bit serializer:
+$\mathtt{data\_bit} = \mathtt{sym\_reg}[6 - \mathtt{bit\_cnt}]$, emitting
+\texttt{sym\_reg[6]} (\ac{msb}) first.
+The \texttt{bit\_cnt} counter advances when \texttt{bit\_shift\_en}
+asserts, wrapping from~6 to~0 on each accepted symbol.
+A correctness requirement governs this wrap: when \texttt{bit\_cnt}~$= 6$
+and \texttt{s\_axi\_tvalid}~$= 0$, both \texttt{bit\_shift\_en} and
+\texttt{accum\_en} are suppressed to hold the serializer and accumulator
+frozen until a valid symbol arrives.
+Without this suppression, a valid-low gap at \texttt{bit\_cnt}~$= 6$
+would wrap the counter and shift stale \texttt{sym\_reg} content into
+the accumulator, misaligning \texttt{accum\_cnt} at the
+\texttt{DATA}$\to$\texttt{TRAILER} boundary and making the terminal
+condition of \texttt{TRAILER} unreachable.
+For the final symbol (\texttt{sym\_cnt}~$= 11{,}264$), the suppression
+is bypassed: once the 11{,}264th input handshake has occurred,
+\texttt{s\_axi\_tready}~$= 0$ prevents any further upstream transfer and
+\texttt{s\_axi\_tvalid} is irrelevant; the final symbol's 7-clock
+serialization window must complete unconditionally.
+
+\textit{Trailer source.}
+In \texttt{TRAILER}, \texttt{current\_bit} is driven by a combinational
+\ac{lut} indexed by \texttt{trailer\_cnt[5:0]}.
+The 40~trailer bits are organized as four fixed sync bytes
+(\texttt{0x71}, \texttt{0xE8}, \texttt{0x4D}, \texttt{0xD4}),
+the 4-bit \texttt{ctrl\_word} at positions 32--35 (\ac{msb} first), and
+four reserved zero bits at positions 36--39~\cite{ITU_J83}.
+The fixed bytes are defined as localparams and constant-folded into
+\ac{lut} logic by Vivado at synthesis — no \ac{rom} files, no \ac{bram},
+and no \texttt{\$readmemh} are required.
+\texttt{ctrl\_word} is read combinationally with no pipeline register; a
+write to \texttt{FRAME\_SYNC\_CW} (PL-11, \ac{axi}4-Lite
+offset~\texttt{0x20}) takes effect within the same clock cycle the write
+completes.
+
+\textit{Output register.}
+\texttt{out\_reg}, \texttt{out\_valid}, and \texttt{out\_tlast} are all
+registered on \texttt{grp\_done}, providing a registered cut between the
+accumulator and the \ac{axi}4-Stream output.
+\texttt{m\_axi\_tdata}~$=$ \texttt{\{2'b00, out\_reg\}}: bits~[39:38]
+are permanently zero-padded to satisfy the \ac{axi}4-Stream requirement
+that \texttt{TDATA} width be a multiple of~8 bits~\cite{ARM_IHI0022}; the effective 38-bit
+trellis group occupies bits~[37:0].
+\texttt{m\_axi\_tlast}~$=$ \texttt{out\_tlast \&\ out\_valid} ensures the
+frame boundary signal can never assert without a valid transfer.
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §5  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-05 randomizer):}
+\begin{itemize}
+  \item Input bytes carry 7-bit randomized symbols; bit~7 is always zero
+        and is truncated internally via
+        \texttt{s\_tdata[6:0]}~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tready} asserts for exactly one clock every
+        7~cycles in \texttt{DATA}.
+        PL-05 must hold \texttt{s\_axi\_tvalid} and \texttt{s\_axi\_tdata}
+        stable during the 6~cycles when \texttt{s\_tready}~$= 0$~\cite{ARM_IHI0022}.
+  \item Upstream valid gaps (including the 5-cycle Horner stall from
+        PL-03) arriving at \texttt{bit\_cnt}~$= 6$ are handled by the
+        serializer freeze: the bit counter and accumulator hold state
+        until a valid symbol is present, with no data loss or
+        \ac{pn} counter skip in PL-05.
+  \item \texttt{s\_axi\_tready}~$= 0$ for the full \texttt{TRAILER}
+        phase (approximately 40~clock cycles); PL-05 holds its output
+        stable throughout.
+  \item No \texttt{tlast} signal is used.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*} and \texttt{m\_axi\_tlast}, to
+PL-07 trellis encoder):}
+\begin{itemize}
+  \item Exactly 2{,}076 trellis groups are emitted per \ac{fec} frame,
+        carried in \texttt{m\_axi\_tdata[37:0]}.
+        Bits~[39:38] are permanently zero.
+  \item \texttt{m\_axi\_tdata} is registered and remains stable while
+        \texttt{m\_axi\_tvalid}~$= 1$ and
+        \texttt{m\_axi\_tready}~$= 0$~\cite{ARM_IHI0022}.
+  \item \texttt{m\_axi\_tlast} is asserted on group~2{,}075 only —
+        exactly once per \ac{fec} frame.
+        PL-07 uses \texttt{tlast} to detect the frame boundary without
+        a sideband group counter.
+  \item \texttt{m\_axi\_tlast} is gated by \texttt{out\_valid} and
+        can never assert without a simultaneous valid transfer.
+  \item No further \texttt{tlast} is generated until the following frame's
+        group~2{,}075.
+\end{itemize}
+
+Figure~\ref{fig:pl06_packet} shows the complete output frame structure.
+The yellow non-sync region covers groups~0 through~2{,}070 — 2{,}071
+groups assembled entirely from serialized symbol data during the
+\texttt{DATA} state.
+The pink sync region covers groups~2{,}071 through~2{,}074, where the frame
+data nears its end and the trailer begins entering the accumulator;
+group~2{,}074 carries 36~data bits alongside the first 2~trailer bits at
+the \texttt{DATA}$\to$\texttt{TRAILER} boundary.
+The green final sync group is group~2{,}075, carrying the remaining
+38~trailer bits exclusively and the only group on which
+\texttt{m\_axi\_tlast} asserts.
+The bit-packing inset in the figure confirms that
+\texttt{m\_axi\_tdata[39:38]~=~2'b00} is padding and
+\texttt{m\_axi\_tdata[37:0]} carries the 38-bit trellis group \ac{msb}-first
+from the output register.
+
+% [ALT: Diagram of one FEC frame on the 40-bit AXI-Stream output bus,
+%       labeled 2076 x 40-bit transfers. Yellow section labeled non-sync
+%       groups[0..2070] with 2071 symbols showing Group-0 through
+%       Group-2070. Pink section labeled sync groups[0..3] with 4
+%       symbols showing Group-0 through Group-3. Green section labeled
+%       final sync with 1 symbol showing Group-0. Below: tlast asserted
+%       on group 2075 (final sync group) only; TRAILER phase upstream
+%       blocked s_tready=0 for ~40 cycles at end; ctrl_word embedded in
+%       group 2075 trailer bits. An inset table shows bit packing:
+%       bit[39:38]=2'b00 padding; bit[37:0]=38-bit trellis group MSB-first
+%       from PL-06 accumulator.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.90\linewidth]{figures/ch4/ch4_pl06_packet}
+  \caption{PL-06 output frame structure: one \ac{fec} frame on the
+           downstream 40-bit \ac{axi}4-Stream bus.
+           2{,}076 groups total; \texttt{m\_axi\_tlast} asserted on
+           group~2{,}075 only; \texttt{s\_axi\_tready}~$= 0$ during
+           the approximately 40-cycle \texttt{TRAILER}
+           phase~\cite{ITU_J83}.}
+  \label{fig:pl06_packet}
+\end{figure}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §6  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-06 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 22~Oct~2026).}
+  \label{tab:pl06_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used  & Available  & Utilization \\
+    \hline
+    LUT          &   42  & 425{,}280  & $<0.01$\%   \\[2pt]
+    \ac{ff}      &  116  & 850{,}560  & 0.01\%      \\[2pt]
+    CARRY8       &    2  & N/A        & N/A          \\[2pt]
+    \ac{bram}    &    0  & 1{,}080    & 0.00\%      \\[2pt]
+    \ac{dsp}     &    0  & 4{,}272    & 0.00\%      \\[2pt]
+    UltraRAM     &    0  & 80         & 0.00\%      \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-06 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 22~Oct~2026).}
+  \label{tab:pl06_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                   & 250\,MHz             & 100\,MHz           \\
+    \hline
+    WNS, setup               & $+2.263$\,ns (MET)   & $+7.954$\,ns (MET) \\[2pt]
+    WHS, hold                & $+0.042$\,ns (MET)   & $+0.036$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$         & $\approx 576$\,MHz   & $\approx 489$\,MHz  \\[2pt]
+    Failing endpoints        & 0                    & 0                  \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §7  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used a golden vector sweep of 4~\ac{fec} frames
+(8{,}304 trellis groups) against the MATLAB reference model
+\texttt{j83b\_frame\_sync\_enc.m}, confirming bit-exact agreement across
+all groups including the trailer boundary at group~2{,}074 and the
+\texttt{tlast}-marked group~2{,}075.
+A \texttt{ctrl\_word} sweep over values \texttt{0x0}, \texttt{0x5},
+\texttt{0xA}, and \texttt{0xF} confirmed correct trailer byte~4 encoding
+in all cases.
+\texttt{m\_axi\_tlast} was confirmed to assert exactly once per frame on
+group~2{,}075.
+Reset recovery was verified in both the \texttt{DATA} and \texttt{TRAILER}
+states with full golden output recovery.
+The 1:7 upstream duty cycle and \texttt{TRAILER}-phase upstream blocking
+behavior were confirmed under all backpressure and throttle combinations.
+All \ac{axi}4-Stream \ac{sva} checks fired zero violations.
+
+Integration testing in the PL-02$\to$PL-06 chain confirmed
+8{,}304/8{,}304 trellis groups bit-exact against the stage~5 golden
+reference, a deterministic frame period of 88{,}584 cycles across all
+4~frames with zero variance, a \texttt{TRAILER} duration of exactly
+40~cycles per frame, and correct handling of all PL-03 Horner stall
+gaps arriving at \texttt{bit\_cnt}~$= 6$.
+All 126 integration checks passed with zero \ac{sva} fires.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-06 hardware validation summary.}
+  \label{tab:pl06_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \path{pl_2_6.bit}\\(PL-02$\to$PL-06 chain)
+      & 100\,MHz
+      & PYNQ \ac{dma} loopback~\cite{PYNQ_DOC}; output compared
+        to \path{stage5_framesync_bits.bin}
+      & 8{,}304/8{,}304 groups bit-exact; all 4 frames;
+        \texttt{ctrl\_word}~$= 0$ confirmed end-to-end
+      & 28-Jul-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-06 was performed as the output stage of the
+PL-02$\to$PL-06 transmit chain, confirming correct symbol serialization,
+trailer insertion, group packing, and \texttt{tlast} generation at the
+hardware level.
+Trailer group~2{,}074 bits~[1:0]~$=$ \texttt{0b01} and
+group~2{,}075~$=$ \texttt{0x31E84DD400} were verified across all
+4~\ac{fec} frames.
+The bitfile was evaluated at 100\,MHz; production operation targets
+250\,MHz, confirmed by post-implementation timing at
+$F_{\max} \approx 576$\,MHz~(Table~\ref{tab:pl06_timing}).
+
+\clearpage
 
 \subsection{PL-07: Trellis Encoder}
 \label{subsec:pl07}
