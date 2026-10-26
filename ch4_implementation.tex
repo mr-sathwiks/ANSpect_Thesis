@@ -2483,7 +2483,7 @@ The full port list is given in Table~\ref{tab:pl07_ports}.
   \label{tab:pl07_ports}
   \centering
   \small
-  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+  \begin{tabular}{llcp{2.7cm}p{7.8cm}}
     \hline
     Port                    & Dir  & Width & Protocol               & Description \\
     \hline
@@ -2632,7 +2632,7 @@ registered output.
            the state labels in Figure~\ref{fig:pl07_fsm}.}
   \label{tab:pl07_fsm}
   \centering
-  \begin{tabular}{lllp{5.5cm}}
+  \begin{tabular}{lllp{7cm}}
     \hline
     State                 & \texttt{s\_axi\_tready}  & \texttt{m\_axi\_tvalid}  & Notes \\
     \hline
@@ -2707,38 +2707,39 @@ Board validation on the RFSoC~4x2 with a golden vector loopback
 confirmed correct C-word output and closed OI-07-04.
 
 \begin{table}[htbp]
-  \caption{PL-07 distributed \ac{rom} configuration. \texttt{TTX\_ROM}
+  \caption{PL-07 distributed \ac{ROM} configuration. \texttt{TTX\_ROM}
            and \texttt{TTY\_ROM} carry identical content but must be
            separate instances because both are read simultaneously with
            different addresses in the same clock cycle~\cite{ITU_J83}.}
   \label{tab:pl07_rom_config}
   \centering
   \small
-  \begin{tabular}{lp{1.6cm}p{3.5cm}p{3.0cm}lc}
+  \begin{tabular}{p{1.2cm}p{2.3cm}p{4.2cm}p{2.8cm}p{1.6cm}c}
     \hline
     ROM & Depth$\times$Width & Address & Data layout & Synthesis & Verified \\
     \hline
     \texttt{DPT\_ROM}
       & $1024\times10$
-      & \texttt{\{XYp[1:0], W\_nib, Z\_nib\}} or \texttt{\{XYp, A\_nib, B\_nib\}} (sync)
-      & \texttt{[9:8]}~new\_XYp;
-        \texttt{[7:4]}~X\_nib;
+      & \texttt{\{XYp[1:0], W\_nib[3:0], Z\_nib[3:0]\}} or
+        \texttt{\{XYp, A\_nib, B\_nib\}} (sync)
+      & \texttt{[9:8]}~new\_XYp;\newline
+        \texttt{[7:4]}~X\_nib;\newline
         \texttt{[3:0]}~Y\_nib
-      & Distributed & 1024/1024 \\[4pt]
+      & Distributed & 1024/1024 \\
     \texttt{TTX\_ROM}
       & $256\times9$
       & \texttt{\{Xq[3:0], X\_nib[3:0]\}}
-      & \texttt{[8:5]}~next\_Xq;
-        \texttt{[4:0]}~c4[4:0]
-      & Distributed & 256/256 \\[4pt]
+      & \texttt{[8:5]}~next\_Xq;\newline
+        \texttt{[4:0]}~\texttt{c4[4:0]}
+      & Distributed & 256/256 \\
     \texttt{TTY\_ROM}
       & $256\times9$
       & \texttt{\{Yq[3:0], Y\_nib[3:0]\}}
-      & \texttt{[8:5]}~next\_Yq;
-        \texttt{[4:0]}~c0[4:0]
+      & \texttt{[8:5]}~next\_Yq;\newline
+        \texttt{[4:0]}~\texttt{c0[4:0]}
       & Distributed & 256/256 \\
     \hline
-    \multicolumn{6}{l}{\small Generator: \texttt{write\_trellis\_roms.m}.
+    \multicolumn{6}{p{16cm}}{\small Generator: \texttt{write\_trellis\_roms.m}.
       Post-impl \texttt{LUT as Distributed RAM}~$= 0$: Vivado constant-folded
       all three into LUT6 logic; board-validated correct (OI-07-04 CLOSED).} \\
   \end{tabular}
@@ -2999,7 +3000,7 @@ The footer packing formula,
 sym[2][7:0], sym[1][7:0], sym[0][7:0]\}},
 is the 40-bit word delivered to PL-08 on each output handshake.
 
-\begin{sidewaystable}
+\begin{table}[htbp]
   \caption{PL-07 C-word output bit-field mapping (non-sync
            path)~\cite{ITU_J83}. Header row~1: bit index. Header
            row~2: J.83B name (\S\,B.5.5.5). Header row~3: source.
@@ -3010,7 +3011,8 @@ is the 40-bit word delivered to PL-08 on each output handshake.
            \texttt{\{sym[4][7:0], sym[3][7:0], sym[2][7:0],
            sym[1][7:0], sym[0][7:0]\}}.}
   \label{tab:pl07_output_map}
-  \centering
+  \begin{center}
+  \resizebox{\textwidth}{!}{%
   \small
   \begin{tabular}{lcccccccc}
     \hline
@@ -3024,8 +3026,9 @@ is the 40-bit word delivered to PL-08 on each output handshake.
     \texttt{sym[3]} & td{[9]}  & td{[10]} & td{[11]} & c4{[3]} & td{[6]}  & td{[7]}  & td{[8]}  & c0{[3]} \\[2pt]
     \texttt{sym[4]} & td{[3]}  & td{[4]}  & td{[5]}  & c4{[4]} & td{[0]}  & td{[1]}  & td{[2]}  & c0{[4]} \\
     \hline
-  \end{tabular}
-\end{sidewaystable}
+  \end{tabular}}
+  \end{center}
+\end{table}
 
 \textit{Parallel output design.}
 Because the DPT, \texttt{TTX\_ROM}, and \texttt{TTY\_ROM} all resolve
@@ -3132,19 +3135,24 @@ directly through the fixed bit-position localparams.
     \hline
     Resource        & Used  & Available   & Utilization \\
     \hline
-    LUT (Logic)     & 193   & 425{,}280   & 0.05\%       \\[2pt]
-    LUT (Memory)    & 0     & 213{,}600   & 0.00\%$^{*}$ \\[2pt]
-    CLB Registers   & 260   & 850{,}560   & 0.03\%       \\[2pt]
-    BRAM Tile       & 0     & 1{,}080     & 0.00\%       \\[2pt]
-    URAM            & 0     & 80          & 0.00\%       \\[2pt]
-    DSP             & 0     & 4{,}272     & 0.00\%       \\[2pt]
+    LUT (Logic)     & 193   & 425{,}280   & 0.05\%       \\
+    LUT (Memory)    & 0     & 213{,}600   & 0.00\%$^{*}$ \\
+    CLB Registers   & 260   & 850{,}560   & 0.03\%       \\
+    BRAM Tile       & 0     & 1{,}080     & 0.00\%       \\
+    URAM            & 0     & 80          & 0.00\%       \\
+    DSP             & 0     & 4{,}272     & 0.00\%       \\
     CLBs            & 40    & 53{,}160    & 0.08\%       \\
     \hline
-    \multicolumn{4}{l}{\small $^{*}$LUT (Memory)~$= 0$: all three ROM tables constant-folded by Vivado into LUT6 logic;} \\
-    \multicolumn{4}{l}{\small \phantom{$^{*}$}verified correct by board loopback (OI-07-04 CLOSED). LUT breakdown: LUT6~$= 158$,} \\
-    \multicolumn{4}{l}{\small \phantom{$^{*}$}LUT5~$= 26$, remainder LUT2/LUT3. All 260 FFs are FDRE.} \\
-    \multicolumn{4}{l}{\small CLB count: 40 at 250\,MHz; 43 at 100\,MHz (placer packing only; LUT/FF totals unchanged).} \\
-  \end{tabular}
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    $^{*}$LUT (Memory)~$= 0$: all three ROM tables constant-folded by Vivado
+    into LUT6 logic; verified correct by board loopback.
+    LUT breakdown: LUT6~$= 158$, LUT5~$= 26$, remainder LUT2/LUT3.
+    All 260 FFs are FDRE.\\
+    CLB count: 40 at 250\,MHz; 43 at 100\,MHz
+    (placer packing only; LUT/FF totals unchanged).
+  \end{minipage}
 \end{table}
 
 \begin{table}[!h]
@@ -3157,16 +3165,21 @@ directly through the fixed bit-position localparams.
     \hline
     Metric                & 250\,MHz             & 100\,MHz           \\
     \hline
-    WNS, setup            & $+1.740$\,ns (MET)   & $+7.398$\,ns (MET) \\[2pt]
-    WHS, hold             & $+0.047$\,ns (MET)   & $+0.059$\,ns (MET) \\[2pt]
-    TNS                   & 0.000\,ns            & 0.000\,ns          \\[2pt]
-    Est.\ $F_{\max}$      & $\approx 442$\,MHz   & $\approx 384$\,MHz \\[2pt]
+    WNS, setup            & $+1.740$\,ns (MET)   & $+7.398$\,ns (MET) \\
+    WHS, hold             & $+0.047$\,ns (MET)   & $+0.059$\,ns (MET) \\
+    TNS                   & 0.000\,ns            & 0.000\,ns          \\
+    Est.\ $F_{\max}$      & $\approx 442$\,MHz   & $\approx 384$\,MHz \\
     Failing endpoints     & 0                    & 0                  \\
     \hline
-    \multicolumn{3}{l}{\small Worst setup path (250\,MHz): \texttt{state\_reg[1]}~$\to$~\texttt{out\_reg\_reg[24]};} \\
-    \multicolumn{3}{l}{\small \phantom{Worst: }2.161\,ns total (logic 0.664\,ns / route 1.497\,ns); 5 levels (LUT2$\times$1, LUT3$\times$1, LUT6$\times$3).} \\
-    \multicolumn{3}{l}{\small 250\,MHz placer is more aggressive; 442\,MHz is the representative $F_{\max}$.} \\
-  \end{tabular}
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    Worst setup path (250\,MHz): \texttt{state\_reg[1]}~$\to$~\texttt{out\_reg\_reg[24]};
+    \newline
+    \hspace*{1em}2.161\,ns total (logic 0.664\,ns / route 1.497\,ns);
+    5 levels (LUT2$\times$1, LUT3$\times$1, LUT6$\times$3).\\
+    250\,MHz placer is more aggressive; 442\,MHz is the representative $F_{\max}$.
+  \end{minipage}
 \end{table}
 
 \FloatBarrier
@@ -3179,51 +3192,46 @@ directly through the fixed bit-position localparams.
 
 \textit{Simulation.}
 Unit-level verification used the master testbench
-\texttt{trellis\_enc\_master\_tb.sv} (43~checks, 10~\ac{sva}
+\path{trellis_enc_master_tb.sv} (43~checks, 10~\ac{sva}
 assertions, 0~failures).
-Checks G1--G6 and the golden vector sweep T1 were carried forward
-from the simple testbench.
-G1a--G1d confirmed correct \ac{fsm} transitions from cold reset
-through both the non-sync path
-(\texttt{IDLE}$\to$\texttt{EMIT}$\to$\texttt{IDLE}) and the sync
-path (\texttt{SYNC\_ACCUM} entry at group~2{,}071).
-G2a--G2c confirmed the registered \texttt{m\_tvalid} timing.
-G3a--G3c verified C-word assembly for zero-input, single-uncoded-bit,
-and coded-path inputs, directly confirming the uncoded wiring and
-ROM lookup paths described in Table~\ref{tab:pl07_output_map}.
-G5b confirmed the trellis state update after a coded-path input,
-with \texttt{Xq}~$= \texttt{0xF}$, \texttt{Yq}~$= \texttt{0xF}$,
-\texttt{XYp}~$= 3$ matching the DPT$\to$\ac{ttx}$/$\ac{tty} chain
-output for the test vector.
-G6b confirmed output stability for 20~cycles under
-\texttt{m\_tready}~$= 0$ backpressure.
-T1 swept 8{,}304/8{,}304 trellis groups across 4~full \ac{fec} frames
-(250~packets, 47{,}000 input bytes) against
-\texttt{stage6\_trellis\_cwords.bin}, covering all non-sync and sync
-groups with continuous trellis state.
-
-Master testbench additions G7--G10 verified the frame-boundary
-counter and routing logic: G7d confirmed the v2.1 fix that frame~1
-group~0 routes to \texttt{EMIT} and not to \texttt{SYNC\_ACCUM};
-G7e confirmed \texttt{grp\_cnt}~$= 0$ immediately after the
-group~2{,}075 handshake.
-G8a--G8e verified \texttt{SYNC\_ACCUM}/\texttt{SYNC\_EMIT} sequencing
-including the 1-cycle valid gap between consecutive outputs (G8e).
-G9a--G9e verified \texttt{m\_axi\_tlast} behaviour: exactly 4
-assertions across 8{,}304 outputs (G9e), only on the 5th sync
-output (G9c), cleared by frame~1 group~0 (G9d).
-G10a--G10e verified per-frame trellis state handoff, confirming that
-\texttt{XYp}/\texttt{Xq}/\texttt{Yq} at the start of frame~1
-equal the values at the end of frame~0 with no reset in between.
-
-The 10 \ac{sva} assertions confirmed: no X-propagation on
-\texttt{m\_tdata} while valid; output stability during downstream
-stalls; \texttt{s\_tready}~$= 1$ only in \texttt{IDLE} or
-\texttt{SYNC\_ACCUM}; \texttt{m\_tlast} only in \texttt{SYNC\_EMIT};
-and valid \ac{fsm} and \texttt{XYp} states at all times.
+After reset, all registers (\texttt{XYp}, \texttt{Xq}, \texttt{Yq},
+\texttt{grp\_cnt}, \texttt{sync\_cnt}) were confirmed at zero and
+\texttt{m\_axi\_tvalid} deasserted.
+Three deterministic single-group inputs verified the C-word assembly
+paths in Table~\ref{tab:pl07_output_map}: an all-zero input produced
+a 40-bit zero bundle confirming the zero-state \ac{rom} baseline;
+setting the uncoded C5 position of \texttt{sym[0]}
+(\texttt{tdata[35]}~$= 1$) produced \texttt{m\_tdata}~$=
+\texttt{40'h0000000020}$ confirming the direct uncoded wire path;
+and asserting the A-stream coded input (\texttt{W\_BIT0}~$= 1$)
+produced \texttt{m\_tdata}~$= \texttt{40'h0000110011}$, confirming
+the DPT$\to$\ac{ttx}$/$\ac{tty} lookup and coded bit placement at
+C4 and C0.
+Trellis state continuity was confirmed across the
+\texttt{EMIT}$\to$\texttt{IDLE} transition and across the frame
+boundary: the state recorded at frame~1 group~0 matched the
+end-of-frame values written by \texttt{sync\_emit\_done} of frame~0
+with no reset between frames.
+The \texttt{SYNC\_ACCUM}/\texttt{SYNC\_EMIT} path was exercised with
+an all-zero five-group sync block, confirming five correct zero
+output bundles, the 1-cycle \texttt{m\_tvalid} gap between non-final
+outputs, and \texttt{m\_tlast} asserted only on the fifth sync
+output with exactly 4~assertions across 8{,}304 total outputs.
+The v2.1 frame-boundary fix was confirmed: accepting group~2{,}075
+with \texttt{s\_tlast} reset \texttt{grp\_cnt} on the same cycle,
+and the first group of the following frame entered \texttt{EMIT}
+and not \texttt{SYNC\_ACCUM}.
+The full four-frame golden vector sweep (250~packets,
+47{,}000~input bytes) confirmed 8{,}304/8{,}304 groups bit-exact
+against \texttt{stage6\_trellis\_cwords.bin} across all non-sync and
+sync groups with continuous trellis state.
+The 10~\ac{sva} assertions confirmed no X-propagation, output
+stability under backpressure, \texttt{s\_tready} only in
+\texttt{IDLE} or \texttt{SYNC\_ACCUM}, \texttt{m\_tlast} only in
+\texttt{SYNC\_EMIT}, and valid \ac{fsm} and \texttt{XYp} states at
+all times — zero fires.
 TIMING-18 warnings for unspecified I/O delays are expected for
-standalone synthesis without a system XDC and carry no functional
-impact.
+standalone synthesis without a system XDC.
 
 \textit{Hardware.}
 
@@ -3232,21 +3240,21 @@ impact.
   \label{tab:pl07_hw}
   \centering
   \small
-  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+  \begin{tabular}{p{2.8cm}lp{4.5cm}p{3.5cm}l}
     \hline
     Bitfile & Clock & Method & Result & Date \\
     \hline
-    \texttt{trellis\_enc} standalone deployment
+    \texttt{trellis\_enc} standalone
       & 250\,MHz
-      & RFSoC~4x2 \ac{axi} \ac{dma} golden vector loopback~\cite{PYNQ_DOC};
-        \texttt{stage5\_framesync\_bits.bin}
-        (315{,}552 bytes; 4~\ac{fec} frames) applied via DMA;
-        C-word output compared byte-for-byte against
-        \texttt{stage6\_trellis\_cwords.bin}
-        (41{,}520 bytes; 4~frames~$\times$~2{,}076~groups~$\times$~5 cwords)
+      & RFSoC~4x2 \ac{axi} \ac{dma} loopback~\cite{PYNQ_DOC};
+        input \path{stage5_framesync_bits.bin}
+        (315{,}552 bytes; 4~frames);
+        output compared to
+        \path{stage6_trellis_cwords.bin}
+        (41{,}520 bytes)
       & 8{,}304/8{,}304 groups matched;
         all 4~frames PASS;
-        \ac{rom} synthesis correctness confirmed
+        \ac{rom} synthesis confirmed
         (OI-07-04 CLOSED)
       & 03-Aug-2026 \\
     \hline
