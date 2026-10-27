@@ -2613,7 +2613,7 @@ handshake, \texttt{out\_valid\_reg} clears for one cycle while
 \texttt{cword\_bundle} is recomputed from the next \texttt{sync\_buf}
 slot before \texttt{out\_reg} is reloaded.
 PL-08 must therefore tolerate brief valid deassertions between
-consecutive sync outputs.
+consecutive sync outputs~\cite{ARM_IHI0022}.
 The final outgoing arc, \texttt{sync\_emit\_done}, fires when the
 fifth sync bundle is consumed (\texttt{output\_handshake \&\&
 sync\_cnt==4}), returning the module to \texttt{IDLE}.
@@ -2682,7 +2682,7 @@ $4 \times 16 \times 16 = 1{,}024$ entries.
 Its 10-bit output word encodes three fields: \texttt{[9:8]} is
 \texttt{new\_XYp}, the updated precoder state; \texttt{[7:4]} is
 \texttt{X\_nib}, the precoded A-stream nibble; and \texttt{[3:0]} is
-\texttt{Y\_nib}, the precoded B-stream nibble.
+\texttt{Y\_nib}, the precoded B-stream nibble~\cite{ITU_J83}.
 
 \texttt{TTX\_ROM} and \texttt{TTY\_ROM} are each $256 \times 9$~bits.
 Both hold identical content, derived from the same BCC generator
@@ -2695,19 +2695,19 @@ and \texttt{\{Yq, Y\_nib\}} for \texttt{TTY\_ROM} — so a single
 shared \ac{rom} could not serve both reads.
 Each 9-bit output word encodes a 4-bit next BCC state in
 \texttt{[8:5]} and five coded output bits in \texttt{[4:0]}, one
-per output symbol.
+per output symbol~\cite{ITU_J83}.
 
 Post-implementation reports show \texttt{LUT as Distributed RAM}~$= 0$
 for all three \acp{rom}.
-This was flagged as OI-07-04 during development: Vivado had
+This was flagged during development: Vivado had
 constant-folded the \ac{rom} contents into combinational \ac{lut6}
 logic rather than inferring \ac{lut}-\ac{ram}, which is functionally
 equivalent but changes the utilization category.
 Board validation on the RFSoC~4x2 with a golden vector loopback
-confirmed correct C-word output and closed OI-07-04.
+confirmed correct C-word output.
 
 \begin{table}[htbp]
-  \caption{PL-07 distributed \ac{ROM} configuration. \texttt{TTX\_ROM}
+  \caption{PL-07 distributed \ac{rom} configuration. \texttt{TTX\_ROM}
            and \texttt{TTY\_ROM} carry identical content but must be
            separate instances because both are read simultaneously with
            different addresses in the same clock cycle~\cite{ITU_J83}.}
@@ -2741,7 +2741,7 @@ confirmed correct C-word output and closed OI-07-04.
     \hline
     \multicolumn{6}{p{16cm}}{\small Generator: \texttt{write\_trellis\_roms.m}.
       Post-impl \texttt{LUT as Distributed RAM}~$= 0$: Vivado constant-folded
-      all three into LUT6 logic; board-validated correct (OI-07-04 CLOSED).} \\
+      all three into LUT6 logic; board-validated correct.} \\
   \end{tabular}
 \end{table}
 
@@ -3229,9 +3229,7 @@ The 10~\ac{sva} assertions confirmed no X-propagation, output
 stability under backpressure, \texttt{s\_tready} only in
 \texttt{IDLE} or \texttt{SYNC\_ACCUM}, \texttt{m\_tlast} only in
 \texttt{SYNC\_EMIT}, and valid \ac{fsm} and \texttt{XYp} states at
-all times — zero fires.
-TIMING-18 warnings for unspecified I/O delays are expected for
-standalone synthesis without a system XDC.
+all times, with zero fires.
 
 \textit{Hardware.}
 
@@ -3255,7 +3253,6 @@ standalone synthesis without a system XDC.
       & 8{,}304/8{,}304 groups matched;
         all 4~frames PASS;
         \ac{rom} synthesis confirmed
-        (OI-07-04 CLOSED)
       & 03-Aug-2026 \\
     \hline
   \end{tabular}
@@ -3264,18 +3261,18 @@ standalone synthesis without a system XDC.
 Board validation of PL-07 was performed as a standalone deployment
 at 250\,MHz on the RFSoC~4x2 board using an \ac{axi} \ac{dma}
 loopback test.
-The input vector \texttt{stage5\_framesync\_bits.bin} was written to
+The input vector \path{stage5_framesync_bits.bin} was written to
 the module via DMA and the C-word output was read back and compared
 against the pre-computed MATLAB golden reference
-\texttt{stage6\_trellis\_cwords.bin}.
+\path{stage6_trellis_cwords.bin}.
 Byte-exact agreement across all 8{,}304 output groups confirms that
 the DPT$\to$\ac{ttx}$/$\ac{tty} \ac{rom} chain synthesized correctly
 and that trellis state continuity holds across the full four-frame
-sequence, resolving OI-07-04.
+sequence, as required by J.83B~\cite{ITU_J83}.
 Post-implementation timing at the 250\,MHz constraint confirms
 $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timing}).
 
-\clearpage
+%\clearpage
 
 \subsection{PL-08: QAM-256 Mapper}
 \label{subsec:pl08}
