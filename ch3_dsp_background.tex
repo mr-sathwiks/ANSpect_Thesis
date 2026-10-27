@@ -53,7 +53,7 @@
 
 This chapter presents the signal processing background underlying
 the J.83B Annex~B downstream physical layer standard, which forms
-the algorithmic foundation of the transmit and receive chains
+the algorithmic foundation of the transmit chain
 implemented in this work.
 The J.83B Annex~B standard, defined by the International
 Telecommunication Union~\cite{ITU_J83} and adopted as the North
@@ -256,7 +256,7 @@ The final stage applies \ac{srrc} pulse shaping to the symbol stream.
 Table~B.3 of the standard specifies the frequency response as a
 \ac{srrc} filter with roll-off $\alpha \approx 0.12$
 for \ac{qam256}~\cite{ITU_J83}.
-The matched \ac{srrc} filter at the receiver completes the Nyquist
+The matched \ac{srrc} filter at a receiver completes the Nyquist
 pair, minimizing \ac{isi} at the
 sampling instants~\cite{ITU_J83}.
 % NOTE: Filter span, samples per symbol, tap count, and output

@@ -4,6 +4,9 @@
 % \input target — no \documentclass or \begin{document}
 % STATUS: NDA-IMPL GATED — see NDA_SCOPE.md
 %         Section 4.8 OPEN — all others require handoff + NDA CLEAR
+%         Section 4.9.2 OPEN — Consumer Device Lock Failure
+%         Section 4.9.3 OPEN — Open Hypotheses
+%         RX chain (§4.4) OUT OF SCOPE — removed 26-Oct-2026
 % v1.0  01-Sep-2026  Split from chapters.tex
 % ============================================================
 
@@ -62,7 +65,7 @@
 \subsection{DMA Control}
 \label{subsec:ps_dma_control}
 % [NDA-IMPL] — BLOCKED (PS-03, PS-05)
-% TODO: Requires NDA CLEAR: IMPL [4.2.3] + handoff for PS-03/PS-05
+% TODO: Requires NDA CLEAR: IMPL [4.2.3] + handoff for PS-03
 \clearpage  
 % ------------------------------------------------------------
 \section{Programmable Logic: TX Chain}
@@ -70,8 +73,9 @@
 % [NDA-IMPL] — BLOCKED
 % TODO: Section intro requires NDA CLEAR: IMPL [4.3] + handoff
 %   - PL-01 through PL-12 — one subsection each
-%   - PL-10 (SD-FEC LDPC) also touches [NDA-ALGO] boundary —
+%   - PL-10 (SD-FEC LDPC) touches [NDA-ALGO] boundary —
 %     see subsection note below
+%   - PL-12 (IQ Combiner) is [NDA-ALGO] permanently blocked
 
 \subsection{PL-01: AXI DMA MM2S}
 \label{subsec:pl01}
@@ -3306,68 +3310,7 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 % TODO: Requires NDA CLEAR: IMPL [4.3.12] + handoff for PL-12
 \clearpage  
 % ------------------------------------------------------------
-\section{Programmable Logic: RX Chain}
-\label{sec:pl_rx}
-% [NDA-IMPL] — BLOCKED
-% TODO: Section intro requires NDA CLEAR: IMPL [4.4] + handoff
-%   - PL-13 through PL-23 — one subsection each
 
-\subsection{PL-13: SRRC FIR RX}
-\label{subsec:pl13}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.1] + handoff for PL-13
-
-\subsection{PL-14: Symbol Timing Recovery}
-\label{subsec:pl14}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.2] + handoff for PL-14
-
-\subsection{PL-15: Carrier and Phase Recovery}
-\label{subsec:pl15}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.3] + handoff for PL-15
-
-\subsection{PL-16: QAM-256 Demapper}
-\label{subsec:pl16}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.4] + handoff for PL-16
-
-\subsection{PL-17: Trellis Decoder}
-\label{subsec:pl17}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.5] + handoff for PL-17
-
-\subsection{PL-18: Frame Sync Detection}
-\label{subsec:pl18}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.6] + handoff for PL-18
-
-\subsection{PL-19: De-Randomizer}
-\label{subsec:pl19}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.7] + handoff for PL-19
-
-\subsection{PL-20: De-Interleaver}
-\label{subsec:pl20}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.8] + handoff for PL-20
-
-\subsection{PL-21: Reed-Solomon Decoder}
-\label{subsec:pl21}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.9] + handoff for PL-21
-
-\subsection{PL-22: Transport Framing RX}
-\label{subsec:pl22}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.10] + handoff for PL-22
-
-\subsection{PL-23: AXI DMA S2MM}
-\label{subsec:pl23}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.4.11] + handoff for PL-23
-\clearpage  
-% ------------------------------------------------------------
 \section{RF Data Converter}
 \label{sec:rfdc}
 % [NDA-IMPL] — BLOCKED
@@ -3387,9 +3330,12 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 % [NDA-IMPL] — BLOCKED (RFDC-02)
 % TODO: Requires NDA CLEAR: IMPL [4.5.2] + handoff
 %   - Tile/channel configuration: NDA-IMPL
+%   - NOTE: ADC Tile 224 used in diagnostic role (RFDC isolation
+%     test + DAC→ADC EVM loopback) — document in §4.9.2
+%   - Config detail still requires handoff
 \clearpage  
 % ------------------------------------------------------------
-\section{RF Front-End}
+\section{RF TX Front-End}
 \label{sec:rf_frontend}
 % [NDA-IMPL] — BLOCKED
 % TODO: Section intro requires NDA CLEAR: IMPL [4.6] + handoff
@@ -3399,12 +3345,7 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 % [NDA-IMPL] — BLOCKED (RF-01)
 % TODO: Requires NDA CLEAR: IMPL [4.6.1] + handoff
 %   - DAC balun + SMA TX path
-
-\subsection{RX Path}
-\label{subsec:rf_rx}
-% [NDA-IMPL] — BLOCKED (RF-02)
-% TODO: Requires NDA CLEAR: IMPL [4.6.2] + handoff
-%   - ADC balun + SMA RX path
+% NOTE: RX Path (RF-02) out of scope — removed 26-Oct-2026
 \clearpage  
 % ------------------------------------------------------------
 \section{Clocking Subsystem}
@@ -3454,7 +3395,8 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 % STATUS: OPEN — public product (EXT-04, EXT-05)
 % TODO:
 %   - HDHomeRun \#1 role: MPEG-TS source over GigE (TX path input)
-%   - HDHomeRun \#2 role: MPEG-TS sink over GigE (RX path output)
+%   - HDHomeRun \#2 role: TX signal validator (J.83B lock test) +
+%     diagnostic instrument (RFDC isolation test)
 %   - Public product — cite product page \cite{NEEDED} % [CITE NEEDED]
 
 \subsection{Spectrum Analysis}
@@ -3471,6 +3413,7 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 \label{sec:verification}
 % [NDA-IMPL] — BLOCKED
 % TODO: Section intro requires NDA CLEAR: IMPL [4.9] + handoff
+% TX-only scope — 26-Oct-2026
 %   - Stage map existence may be referenced (public README portion)
 %   - Test vector details: NDA-IMPL
 
@@ -3482,9 +3425,22 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 %   - File formats (public): uint8 / int16 per stage
 %   - Internal content and mismatch analysis: NDA-IMPL
 
-\subsection{Loopback Validation}
-\label{subsec:loopback}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.9.2] + handoff
-%   - Loopback path topology (structural) may be described after clearance
-%   - BER / EVM / verification results: NDA-IMPL
+\subsection{Consumer Device Lock Failure}
+\label{subsec:lock_failure}
+% STATUS: OPEN — draftable from diagnostic reports
+% TODO:
+%   - RFDC isolation test result: fault isolated to PL-02→PL-09
+%   - EVM results: 3.00% — passes J.83B threshold
+%   - Two independent consumer receivers failed identically
+%     (HDHomeRun + Samsung F6000F)
+%   - Summary table: hypotheses closed (H6–H12 + others)
+%   - Conclusion: root cause not identified within thesis scope
+%   - Pointer to §\ref{subsec:open_hypotheses}
+
+\subsection{Open Hypotheses}
+\label{subsec:open_hypotheses}
+% STATUS: OPEN — content pending hypothesis list from author
+% TODO: Author to supply complete list of unverified hypotheses
+%   - Table format: ID / Hypothesis / Status / Evidence needed
+%   - Do NOT assert any hypothesis as the root cause
+%   - Pointer to §\ref{sec:future_work} for resolution path

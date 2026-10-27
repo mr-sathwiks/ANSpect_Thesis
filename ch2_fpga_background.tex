@@ -94,7 +94,7 @@ design, breaking long combinational paths into shorter segments
 and enabling the fabric to sustain higher clock
 frequencies~\cite{AMD_UG574}.
 In a pipelined \ac{dsp} datapath such as the J.83B transmit
-and receive chain, \acp{ff} insert registered boundaries
+chain, \acp{ff} insert registered boundaries
 between each processing block to permit sustained throughput
 at the 250\,MHz \ac{pl} clock frequency available on the
 \ac{rfsoc}~4x2 platform~\cite{AMD_UG1085}.
@@ -270,8 +270,8 @@ prototype iteration cycle without requiring a low-level embedded
 software development environment~\cite{Kovacs2024}.
 Taken together, these properties establish the
 Zynq~UltraScale+ \ac{rfsoc} as an appropriate platform
-for prototyping and validating the complete J.83B transmit
-and receive chain developed in this thesis.
+for prototyping and validating the J.83B transmit
+chain implemented in this thesis.
 
 %\clearpage
 
@@ -297,9 +297,9 @@ latency, power overhead, and signal integrity constraints
 in conventional multi-chip \ac{rf} signal processing
 architectures~\cite{Javaid2022}.
 The ZU48DR device therefore provides a compact,
-single-board platform on which the complete J.83B
-transmit and receive processing chain can be implemented,
-verified, and characterized.
+single-board platform on which the J.83B transmit
+processing chain can be implemented, verified,
+and characterized.
 
 The principal subsystems of the ZU48DR relevant to this
 work are the processing system, the programmable logic
@@ -670,10 +670,7 @@ system memory managed by the \ac{apu}~\cite{AMD_UG1085}.
 In the J.83B implementation, the MM2S channel of
 the \ac{axi} \ac{dma} delivers \ac{mpegts} packet
 data from the \ac{ps} memory to the transmit
-processing chain, and the S2MM channel transfers
-demodulated output data from the receive chain
-back to the \ac{ps} memory through the
-\ac{hp} ports.
+processing chain through the \ac{hp} ports.
 
 \paragraph{General-Purpose Ports:}
 The general-purpose \ac{axi} master ports provide
@@ -711,7 +708,7 @@ Table~\ref{tab:pspl_ports}.
   Port Type & Protocol & Direction & Use in This Work \\
   \hline
   \ac{hp} \ac{axi} slave & \ac{axi}4 Full  & PL $\to$ PS
-    & \ac{dma} data transfers (MM2S/S2MM) \\[3pt]
+    & \ac{dma} data transfers (MM2S) \\[3pt]
   GP \ac{axi} master      & \ac{axi}4-Lite  & PS $\to$ PL
     & Register R/W, runtime config \\[3pt]
   Interrupt                & IRQ              & PL $\to$ PS

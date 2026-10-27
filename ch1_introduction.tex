@@ -31,8 +31,10 @@
 \section{Problem Statement}
 \label{sec:problem_statement}
 % TODO:
-%   - Define the technical problem: full J.83B Annex B TX+RX
+%   - Define the technical problem: J.83B Annex B TX
 %     chain on Zynq UltraScale+ RFSoC 4x2
+%   - State scope boundary explicitly: TX only; RX not implemented
+%   - Note: consumer device lock not achieved — state in scope section
 %   - Identify HDL Coder limitations as a secondary problem
 %   - State the scope boundary (what is and is not in this work)
 
@@ -41,12 +43,15 @@
 \label{sec:contributions}
 % TODO:
 %   - Enumerate thesis contributions as a list
-%   Contribution 1: Manual SystemVerilog RTL implementation of
-%     full J.83B Annex B chain — motivated by HDL Coder
-%     limitations (document decision and outcome)
-%   Contribution 2: [NDA-TITLE system] — state generically,
-%     no algorithm or implementation detail
-%     (e.g., "a complete PYNQ-based loopback testbed for ...")
+%   Contribution 1: Manual SystemVerilog RTL — J.83B Annex B
+%     TX chain — motivated by HDL Coder limitations
+%   Contribution 2: TX verification methodology —
+%     simulation + GNU Radio cross-validation + hardware EVM
+%   Contribution 3: RF diagnostic methodology —
+%     RFDC isolation + systematic hypothesis elimination
+%   Contribution 4: [NDA-TITLE system] — state generically
+%   NOTE: Consumer lock not achieved — acknowledge in problem statement
+%   NOTE: RX not implemented — state scope boundary here
 %   - Cite relevant standards used \cite{NEEDED} % [CITE NEEDED]
 
 % ------------------------------------------------------------
@@ -56,5 +61,5 @@
 %   - Chapter-by-chapter roadmap paragraph
 %   - CH-2: FPGA/RFSoC background
 %   - CH-3: J.83B DSP algorithm background
-%   - CH-4: implementation details
+%   - CH-4: TX implementation details + verification + diagnostic results
 %   - CH-5: conclusions and future work

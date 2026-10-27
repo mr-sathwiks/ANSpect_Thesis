@@ -24,10 +24,15 @@
 %   - Restate contributions from Section~\ref{sec:contributions}
 %     in past tense with outcome framing
 %   Contribution 1: manual SystemVerilog RTL — J.83B Annex B
-%     full TX+RX chain — outcome of HDL Coder evaluation
-%   Contribution 2: [NDA-TITLE system] — stated generically
-%   - Assessment of verification results (high level only;
-%     detail deferred to CH-4.9 after NDA clearance)
+%     TX chain — outcome of HDL Coder evaluation
+%   Contribution 2: TX verification methodology —
+%     simulation + GNU Radio cross-validation + hardware EVM
+%   Contribution 3: RF diagnostic methodology —
+%     RFDC isolation + systematic hypothesis elimination
+%   Contribution 4: [NDA-TITLE system] — stated generically
+%   - Consumer lock not achieved — state honestly
+%   - Root cause not identified — state honestly
+%   - RX chain not implemented — out of scope
 
 % ------------------------------------------------------------
 \section{Future Work}
@@ -35,6 +40,9 @@
 % TODO:
 %   - Enumerate open research directions
 %   Candidate directions (do not invent — confirm with advisor):
+%   - Resolution of consumer device lock failure —
+%     verify open hypotheses listed in §\ref{subsec:open_hypotheses}
+%   - RX chain implementation (PL-13 through PL-23)
 %   - OFDM / DOCSIS 3.1 SC-FDE extension
 %   - Multi-channel concurrent operation on RFSoC 4x2
 %   - Real-time MPEG-TS throughput benchmarking
