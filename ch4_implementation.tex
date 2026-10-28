@@ -3278,10 +3278,611 @@ $F_{\max} \approx 442$\,MHz with no failing endpoints~(Table~\ref{tab:pl07_timin
 
 %\clearpage
 
+% ============================================================
+% CH-4.3.8  PL-08: QAM256_MAP
+% Source : PL-08_QAM256_MAP_handoff_v2_7.md v2.7  10-Sep-2026
+%          qam256_map.sv v2.7
+%          write_qam_rom_fix51_49.m [CHG-ROM-03]
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.8 [PL-08] — PASS  28-Oct-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 [x]  IMG-4 [x]
+% Expanded  : 28-Oct-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+% HW status : HW-PASS 27-Oct-2026 — 41,520/41,520 IQ pairs bit-exact
+%             (RFSoC 4x2 AXI DMA standalone, stage6→stage7_fix51_49)
+% Co-dep    : Fix51_49 format and 128-bit output width defined by PL-09 input contract
+%             §6 downstream → forward-ref \ref{subsec:pl09}
+%             write_qam_rom_fix51_49.m produces Fix51_49 per PL-09 contract
+% ============================================================
+
 \subsection{PL-08: QAM-256 Mapper}
 \label{subsec:pl08}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.8] + handoff for PL-08
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The \ac{qam256} mapper module (PL-08) implements the J.83B Annex~B
+\S\,B.5.5.5 constellation mapping stage, converting each 8-bit C-word
+from the trellis encoder into a complex \ac{iq} baseband sample on
+the \ac{qam256} constellation defined by Figure~B.19 of the
+standard~\cite{ITU_J83}.
+The algorithmic background for this stage — constellation geometry,
+C-word assignment, and symbol rate — is presented in
+Section~\ref{sec:qam256}; this section covers its hardware realization.
+The module is hand-coded SystemVerilog (\texttt{qam256\_map.sv},
+revision~v2.7), operates as an \ac{axi}4-Stream slave-to-master pair
+at the 250\,MHz \ac{pl} fabric clock, and carries a hardware
+verification status of HW-PASS (41{,}520/41{,}520 \ac{iq} pairs
+bit-exact, \ac{rfsoc}~4x2 \ac{dma} verification).
+
+Figure~\ref{fig:pl08_pipeline} shows the position of PL-08 in the
+transmit chain.
+The bus width changes at this stage: the 40-bit slave interface
+receives five packed 8-bit C-words per transfer from the trellis encoder
+(PL-07), while the 128-bit master interface delivers one complex \ac{iq}
+sample per clock cycle to the \ac{srrc} pulse shaping filter (PL-09).
+PL-08 therefore implements a 1:5 serialization ratio — one input bundle
+produces five sequential output transfers.
+Both \texttt{s\_axi\_tlast} and \texttt{m\_axi\_tlast} ports are present:
+the module consumes the \ac{fec} frame boundary from PL-07 and
+re-asserts it on the fifth and final \ac{iq} symbol of the frame's
+last bundle.
+
+% [ALT: Block diagram showing three rectangular blocks in a horizontal
+%       row. Left block: PL-07 TRELLIS_ENC. Centre block (highlighted
+%       green): PL-08 QAM256_MAP. Right block: PL-09 SRRC_FIR_TX.
+%       Left arrow labeled 40-bit AXI-S with tlast. Right arrow labeled
+%       128-bit AXI-S with tlast. A 250 MHz PL clock label appears at
+%       the lower left; no CDC markers at either boundary.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/ch4/ch4_pl08_pipeline}
+  \caption{Pipeline position of PL-08 \texttt{qam256\_map} in the
+           J.83B Annex~B transmit chain. The 40-bit slave bus carries
+           five packed 8-bit C-words per transfer; the 128-bit master
+           bus delivers one Fix51\_49 complex \ac{iq} sample per
+           clock cycle to PL-09.}
+  \label{fig:pl08_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl08_ip_block} shows the packaged \texttt{qam256\_map}
+core in Vivado \ac{ip} Integrator.
+Compared to PL-07, two differences are immediately visible.
+On the slave side, \texttt{s\_axi\_tlast} appears as an input,
+consuming the \ac{fec} frame boundary from PL-07.
+On the master side, \texttt{m\_axi\_tdata} widens from 40 to 128~bits,
+reflecting the Fix51\_49 signed \ac{iq} representation whose bit
+allocation is defined by the downstream PL-09 input contract
+(Section~\ref{subsec:pl09}).
+The full port list is given in Table~\ref{tab:pl08_ports}.
+
+% [ALT: Screenshot of the qam256_map IP core in Vivado IP Integrator.
+%       The block is labeled qam256_map with subtitle J.83B Annex B
+%       256-QAM Constellation Mapper (PL-08) (Pre-Production). On the
+%       left side the s_axi slave interface group shows ports
+%       s_axi_tdata[39:0], s_axi_tlast, s_axi_tvalid, and
+%       s_axi_tready. Control ports clk and rst_n appear below. On the
+%       right side the m_axi master interface group shows ports
+%       m_axi_tdata[127:0], m_axi_tlast, m_axi_tvalid, and
+%       m_axi_tready.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl08_ip_block}
+  \caption{PL-08 \texttt{qam256\_map} packaged as a Vivado \ac{ip}
+           core in \ac{ip} Integrator, showing the \texttt{s\_axi}
+           slave group with \texttt{s\_axi\_tlast} input and the
+           \texttt{m\_axi} master group with the 128-bit
+           \texttt{m\_axi\_tdata} and \texttt{m\_axi\_tlast} output.}
+  \label{fig:pl08_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-08 \texttt{qam256\_map} port list.}
+  \label{tab:pl08_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.7cm}p{5.8cm}}
+    \hline
+    Port                    & Dir  & Width & Protocol               & Description \\
+    \hline
+    \texttt{clk}            & in   & 1     & Clock
+      & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{rst\_n}         & in   & 1     & Reset
+      & Synchronous active-low \\[2pt]
+    \texttt{s\_axi\_tdata}  & in   & 40    & \ac{axi}4-Stream slave
+      & 5 packed 8-bit C-words; \texttt{sym[0]} at \texttt{[7:0]},
+        \texttt{sym[4]} at \texttt{[39:32]};
+        latched into \texttt{tdata\_lat\_r} at \texttt{input\_handshake} \\[2pt]
+    \texttt{s\_axi\_tvalid} & in   & 1     & \ac{axi}4-Stream slave
+      & Bundle valid \\[2pt]
+    \texttt{s\_axi\_tready} & out  & 1     & \ac{axi}4-Stream slave
+      & Combinational; state-dependent (see Interface Contract) \\[2pt]
+    \texttt{s\_axi\_tlast}  & in   & 1     & \ac{axi}4-Stream slave
+      & \ac{fec} frame boundary from PL-07; latched at
+        \texttt{input\_handshake}; asserts on bundle~2{,}075 only \\[2pt]
+    \texttt{m\_axi\_tdata}  & out  & 128   & \ac{axi}4-Stream master
+      & \texttt{\{26'b0, Q\_fix51[50:0], I\_fix51[50:0]\}};
+        Fix51\_49 signed; Q at \texttt{[101:51]}, I at \texttt{[50:0]};
+        \texttt{[127:102]} always zero; registered \\[2pt]
+    \texttt{m\_axi\_tvalid} & out  & 1     & \ac{axi}4-Stream master
+      & Registered hold register (\texttt{out\_valid\_r}) \\[2pt]
+    \texttt{m\_axi\_tready} & in   & 1     & \ac{axi}4-Stream master
+      & Downstream backpressure \\[2pt]
+    \texttt{m\_axi\_tlast}  & out  & 1     & \ac{axi}4-Stream master
+      & Combinational: \texttt{out\_valid\_r \&\ out\_tlast\_r};
+        asserts on the 5th symbol of the frame's last bundle only \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  FSM
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{FSM.}
+
+Figure~\ref{fig:pl08_fsm} shows the two-state \ac{fsm} of PL-08.
+The two states gate the \ac{axi}4-Stream handshakes for the 1:5
+input-bundle-to-symbol-drain sequencing; the datapath — \ac{rom}
+lookup and output register capture — behaves identically in both states.
+
+% [ALT: State transition diagram with two circular states. IDLE(0) is
+%       at the left with s_tready = !out_valid_r || m_tready and
+%       m_tvalid = out_valid_r. DRAIN(1) is at the right with
+%       s_tready = final_capture_this_cycle and m_tvalid = out_valid_r.
+%       A dashed arc labeled !rst_n enters IDLE from above. IDLE to
+%       DRAIN arc labeled input_handshake. DRAIN to IDLE arc labeled
+%       drain_complete: final_capture_this_cycle && !input_handshake.
+%       DRAIN self-arc labeled drain_continue: final_capture_this_cycle
+%       && input_handshake, OR drain_cnt_r less than 4 implicit hold.
+%       A default arc points to IDLE.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.80\linewidth]{figures/ch4/ch4_pl08_fsm}
+  \caption{PL-08 \ac{fsm} state transition diagram.
+           \texttt{input\_hs}: \texttt{s\_axi\_tvalid \&\
+           s\_axi\_tready};
+           \texttt{final\_capture\_this\_cycle}: \texttt{output\_en \&\
+           last\_symbol\_done}.
+           \texttt{s\_axi\_tready} opens only on the exact cycle the
+           final symbol is captured into \texttt{iq\_out\_r}, not for
+           the entire \texttt{drain\_cnt\_r}~$= 4$ stall window.}
+  \label{fig:pl08_fsm}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-08 \ac{fsm} handshake signal matrix.}
+  \label{tab:pl08_fsm}
+  \centering
+  \small
+  \begin{tabular}{lp{4.5cm}lp{5.0cm}}
+    \hline
+    State           & \texttt{s\_axi\_tready}                    & \texttt{m\_axi\_tvalid} & Notes \\
+    \hline
+    \texttt{IDLE}   & \texttt{!out\_valid\_r || m\_axi\_tready}  & \texttt{out\_valid\_r}
+                    & Input blocked while prior bundle's \texttt{sym[4]}
+                      is pending downstream \\[4pt]
+    \texttt{DRAIN}  & \texttt{final\_capture\_this\_cycle}        & \texttt{out\_valid\_r}
+                    & Opens only on the cycle \texttt{sym[4]} is genuinely
+                      captured into \texttt{iq\_out\_r};
+                      \ac{rom} serialization in progress otherwise \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\texttt{IDLE} is the reset state and the inter-bundle holding state.
+\texttt{out\_valid\_r} may remain asserted in \texttt{IDLE} when the
+final symbol of the previous bundle (\texttt{sym[4]}) has been captured
+but not yet consumed by PL-09.
+The \texttt{s\_axi\_tready} expression
+\texttt{!out\_valid\_r || m\_axi\_tready} holds the input gate closed
+until \texttt{sym[4]} clears the downstream pipeline, preventing the
+input latch from being overwritten before the outgoing symbol is
+consumed.
+The first input handshake from PL-07 latches the new bundle into
+\texttt{tdata\_lat\_r} and \texttt{tlast\_lat\_r}, resets
+\texttt{drain\_cnt\_r} to zero, and transitions the module to
+\texttt{DRAIN}.
+
+\texttt{DRAIN} is the serialization state.
+The module cycles \texttt{drain\_cnt\_r} from~0 to~4, selecting one
+C-word per cycle from \texttt{tdata\_lat\_r} as the \ac{rom} address.
+\texttt{s\_axi\_tready} remains deasserted for the full five-cycle drain
+except on \texttt{final\_capture\_this\_cycle} — the cycle on which
+both \texttt{output\_en} fires and \texttt{drain\_cnt\_r}~$= 4$.
+This signal distinguishes the cycle on which \texttt{sym[4]} is
+genuinely written into \texttt{iq\_out\_r} from the broader stall
+window in which \texttt{drain\_cnt\_r} merely holds the value~4.
+Under downstream backpressure, \texttt{drain\_cnt\_r} can reach~4
+several cycles before \texttt{output\_en} fires; using
+\texttt{drain\_cnt\_r}~$= 4$ alone as the gate would admit the next
+bundle and overwrite \texttt{tdata\_lat\_r} before \texttt{sym[4]} was
+captured into the output register.
+On \texttt{final\_capture\_this\_cycle}, the module either returns to
+\texttt{IDLE} when no upstream bundle is pending (\texttt{drain\_complete}),
+or remains in \texttt{DRAIN} to immediately begin the next bundle when
+PL-07 presents one simultaneously (\texttt{drain\_continue}).
+
+% ------------------------------------------------------------------
+% §4  MEMORY RESOURCES
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Memory Resources.}
+
+The constellation look-up table \texttt{IQ\_ROM} maps each of the 256
+possible C-word values to its complex \ac{iq} coordinates on the
+J.83B \ac{qam256} constellation~\cite{ITU_J83}.
+Its content was pre-computed offline using the ANSpect \mbox{J.83B}
+reference implementation~\cite{ITU_J83}, with
+\path{write_qam_rom_fix51_49.m} reading the constellation labeling
+table from \path{j83b_const256.mat} and quantizing each point as
+\texttt{fi(level/sqrt(170), 1, 51, 49)}.
+The Fix51\_49 signed format and 51-bit word width were chosen to
+match the input data contract of the downstream \ac{srrc} pulse shaping
+filter (Section~\ref{subsec:pl09}), which defines the required \ac{iq}
+data representation; the \ac{rom} generator was designed to produce
+constellation data at that precision.
+
+The \texttt{rom\_style = "distributed"} synthesis attribute directs
+Vivado~2024.2 to map the read-only table to combinational \ac{lut6}
+logic.
+Post-implementation confirms \texttt{LUT as Memory}~$= 0$: all 256
+entries are constant-folded into \ac{lut6} logic rather than
+\ac{lut}-\ac{ram}, which is the expected behavior for a read-only
+single-port array and is not a defect.
+Hardware \ac{dma} verification on 27-Oct-2026 confirmed the \ac{rom}
+content was correctly baked into the bitstream and produces bit-exact
+\ac{iq} output.
+Table~\ref{tab:pl08_rom} lists the \ac{rom} configuration.
+
+\begin{table}[htbp]
+  \caption{PL-08 \texttt{IQ\_ROM} configuration.}
+  \label{tab:pl08_rom}
+  \centering
+  \small
+  \begin{tabular}{p{3.5cm}p{11.0cm}}
+    \hline
+    Parameter              & Value \\
+    \hline
+    Depth $\times$ Width   & $256 \times 104$~bits \\[2pt]
+    Content                & J.83B Fig~B.19 \ac{qam256} constellation;
+                             complex \ac{iq} coordinate per C-word value
+                             (0x00--0xFF)~\cite{ITU_J83} \\[2pt]
+    Data format            & Fix51\_49 signed, \texttt{fi(level/sqrt(170), 1, 51, 49)},
+                             no scale factor; format matches PL-09 input contract
+                             (Section~\ref{subsec:pl09}) \\[2pt]
+    \ac{rom} bit layout    & \texttt{[103]}~$= 0$, \texttt{[102:52]}~$=$~Q\_fix51[50:0],
+                             \texttt{[51]}~$= 0$, \texttt{[50:0]}~$=$~I\_fix51[50:0];
+                             bits~[103] and~[51] always zero (padding, stripped by synthesis) \\[2pt]
+    Synthesis              & Distributed \ac{lut6} logic;
+                             \texttt{LUT as Memory}~$= 0$ (constant-folded by
+                             Vivado~2024.2; expected, hardware-verified correct) \\[2pt]
+    Source file            & \texttt{iq\_rom\_fix51\_49.mem} (26 hex chars/entry) \\[2pt]
+    Generator              & \path{write_qam_rom_fix51_49.m} via
+                             ANSpect J.83B reference model \path{j83b_const256.mat} \\[2pt]
+    Verification           & 256/256 entries; bijection confirmed;
+                             HW-PASS 27-Oct-2026
+                             (41{,}520/41{,}520 \ac{iq} pairs bit-exact) \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §5  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{RTL Architecture.}
+
+Figure~\ref{fig:pl08_dataflow} shows the dataflow from one 40-bit
+input bundle to five sequential 128-bit output transfers.
+The five 8-bit C-words packed into \texttt{s\_axi\_tdata[39:0]} —
+\texttt{sym[0]} at \texttt{[7:0]} through \texttt{sym[4]} at
+\texttt{[39:32]} — are latched into \texttt{tdata\_lat\_r} at the
+input handshake.
+A 3-bit drain counter \texttt{drain\_cnt\_r} cycling $0 \to 4$ selects
+one C-word per cycle as the 8-bit \ac{rom} address:
+$\mathtt{cword\_addr} = \mathtt{tdata\_lat\_r}[\mathtt{drain\_cnt\_r}
+\times 8 \; {+:} \; 8]$.
+The selected C-word addresses \texttt{IQ\_ROM} combinationally; on
+\texttt{output\_en} the 104-bit result is registered into
+\texttt{iq\_out\_r}.
+The 128-bit output bus assembles Q and I from the registered entry:
+
+\begin{equation}
+  \mathtt{m\_axi\_tdata} =
+  \{\,\texttt{26'b0},\;
+    \mathtt{iq\_out\_r}[102:52],\;
+    \mathtt{iq\_out\_r}[50:0]\,\}
+  \label{eq:pl08_tdata}
+\end{equation}
+
+\noindent placing Q\_fix51[50:0] at \texttt{tdata[101:51]} and
+I\_fix51[50:0] at \texttt{tdata[50:0]}.
+The 26 zero bits at \texttt{tdata[127:102]} are padding required to
+align the bus to a multiple of 8~bits~\cite{ARM_IHI0022}.
+
+% [ALT: Dataflow diagram titled One 40-bit input bundle to 5 sequential
+%       128-bit output transfers. On the left a yellow box labeled Input
+%       40-bits s_axi_tdata[39:0] shows five labeled fields from top to
+%       bottom: sym[4] at [39:32], sym[3] at [31:24], sym[2] at [23:16],
+%       sym[1] at [15:8], sym[0] at [7:0]. The five fields feed into a
+%       5:1 MUX block. Below the MUX a circle labeled drain_cnt_r Cyclic
+%       Up-Counter n=0 to 4 provides the select input. The MUX output
+%       feeds a pink block labeled IQ_ROM 256 x 104-bits with the text
+%       IQ_ROM[sym[n]] inside. The ROM output feeds a green box labeled
+%       Output 128-bits m_axi_tdata[127:0] with IQ_ROM[sym[n]] 128-bit
+%       inside and the caption drain_cnt_r = n, one transfer per cycle,
+%       5 cycles per input bundle. At the bottom a blue bit packing table
+%       shows three columns: sym[n][127:102]=26b0 padding,
+%       sym[n][101:51]=Q signed fix51_49, sym[n][50:0]=I signed fix51_49.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_pl08_dataflow}
+  \caption{PL-08 dataflow: one 40-bit input bundle serialized into five
+           sequential 128-bit \ac{iq} output transfers.
+           \texttt{drain\_cnt\_r} selects one C-word per cycle as the
+           \texttt{IQ\_ROM} address; the Fix51\_49 I and Q values
+           occupy \texttt{m\_axi\_tdata[50:0]} and
+           \texttt{m\_axi\_tdata[101:51]} respectively.}
+  \label{fig:pl08_dataflow}
+\end{figure}
+
+\FloatBarrier
+
+Three correctness requirements govern the RTL implementation of this
+datapath.
+
+\textit{Input latch (\texttt{tdata\_lat\_r}/\texttt{tlast\_lat\_r}).}
+The \ac{rom} read addresses \texttt{tdata\_lat\_r} rather than the
+live \texttt{s\_axi\_tdata} port.
+The live port is not stable for the full five-cycle drain: upstream
+PL-07 may deassert \texttt{s\_axi\_tdata} after the input handshake,
+and on the \texttt{drain\_continue} path a new bundle's data arrives
+the same cycle \texttt{sym[4]} is still being addressed.
+Latching both \texttt{tdata} and \texttt{tlast} at \texttt{load\_en}
+freezes the bundle for the entire drain window and eliminates the race.
+
+\textit{Output hold register (\texttt{out\_valid\_r}).}
+\texttt{out\_valid\_r} is a hold register: set on \texttt{output\_en}
+and cleared only on \texttt{output\_handshake}, never on a state
+transition.
+Without this, any downstream stall cycle in which
+\texttt{m\_tready}~$= 0$ would clear \texttt{out\_valid\_r} and
+re-assert \texttt{drain\_en} through the \texttt{!out\_valid\_r} path,
+advancing \texttt{drain\_cnt\_r} into the wrong symbol and oscillating
+\texttt{m\_axi\_tvalid} on every stall cycle.
+The hold-register pattern matches the registered output design of
+PL-07 and satisfies the \ac{axi}4-Stream data-stability
+requirement~\cite{ARM_IHI0022}.
+
+\textit{\texttt{m\_axi\_tlast} valid gate.}
+\texttt{m\_axi\_tlast} is driven as
+\texttt{out\_valid\_r \&\& out\_tlast\_r} rather than from
+\texttt{out\_tlast\_r} alone.
+\texttt{out\_tlast\_r} is updated only on \texttt{output\_en} cycles;
+after the \texttt{DRAIN}$\to$\texttt{IDLE} transition,
+\texttt{output\_en}~$= 0$ and \texttt{out\_tlast\_r} retains its last
+captured value.
+Without the valid gate, a stale \texttt{out\_tlast\_r}~$= 1$ would
+propagate to \texttt{m\_axi\_tlast} at inter-frame boundaries while
+\texttt{m\_axi\_tvalid}~$= 0$, violating the \ac{axi}4-Stream
+protocol~\cite{ARM_IHI0022}.
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream (\texttt{s\_axi\_*}, from PL-07 trellis encoder):}
+\begin{itemize}
+  \item \texttt{s\_axi\_tdata[39:0]} carries five C-words packed
+        \ac{msb}-bundle-first: \texttt{sym[0]} at \texttt{[7:0]},
+        \texttt{sym[4]} at \texttt{[39:32]}.
+        Packing matches the PL-07 \texttt{m\_axi\_tdata} output
+        contract verbatim~\cite{ITU_J83}.
+  \item \texttt{s\_axi\_tdata} and \texttt{s\_axi\_tlast} must remain
+        stable from assertion until \texttt{s\_axi\_tready} asserts;
+        PL-07 guarantees its output stable while its own
+        \texttt{m\_tready}~$= 0$~\cite{ARM_IHI0022}.
+  \item \texttt{s\_axi\_tlast} asserts on the 2{,}076th (final) bundle
+        of each \ac{fec} frame.
+        It is latched at the input handshake and is not consumed from
+        the live port during the drain window.
+  \item In \texttt{SYNC\_EMIT}, PL-07 produces a 1-cycle
+        \texttt{m\_tvalid} gap between successive sync outputs;
+        PL-08 remains in \texttt{IDLE} or holds \texttt{DRAIN}
+        awaiting the next \texttt{input\_handshake} without data loss.
+  \item Serialization ratio: 1 input bundle $\to$ 5 output \ac{iq}
+        symbols (1:5).
+  \item No \texttt{tlast} terminates the slave transfer.
+\end{itemize}
+
+\textit{Downstream (\texttt{m\_axi\_*}, to PL-09 \ac{srrc} filter):}
+\begin{itemize}
+  \item The output word width, data format, and \ac{iq} packing of
+        \texttt{m\_axi\_tdata} are defined by the input contract of the
+        downstream pulse shaping filter (Section~\ref{subsec:pl09}).
+        PL-08 delivers each constellation point as
+        \texttt{\{26'b0, Q\_fix51[50:0], I\_fix51[50:0]\}}: Fix51\_49
+        signed, \texttt{fi(level/sqrt(170), 1, 51, 49)}, no scale
+        factor; Q at \texttt{tdata[101:51]}, I at \texttt{tdata[50:0]};
+        \texttt{tdata[127:102]} always zero.
+        The constellation \ac{rom} generator
+        \path{write_qam_rom_fix51_49.m} was designed to produce \ac{iq}
+        data at this precision to satisfy the downstream requirement.
+  \item \texttt{m\_axi\_tvalid} and \texttt{m\_axi\_tdata} are
+        registered and held stable while \texttt{m\_axi\_tready}~$= 0$,
+        compliant with the \ac{axi}4-Stream stability
+        requirement~\cite{ARM_IHI0022}.
+  \item \texttt{m\_axi\_tlast} asserts only on the 5th output symbol
+        of the frame's last bundle — exactly once per \ac{fec} frame.
+        It is gated by \texttt{out\_valid\_r} and cannot assert while
+        \texttt{m\_axi\_tvalid}~$= 0$.
+  \item Output pipeline latency from \texttt{input\_handshake} to first
+        \texttt{m\_tvalid}~$= 1$: two clock cycles (cycle~0:
+        \texttt{IDLE}$\to$\texttt{DRAIN} registered; cycle~1: first
+        \texttt{output\_en} from \texttt{!out\_valid\_r};
+        cycle~2: \texttt{m\_tvalid}~$= 1$).
+  \item On back-to-back bundles (\texttt{drain\_continue}), the module
+        remains in \texttt{DRAIN} with no \texttt{IDLE} gap and no
+        \texttt{m\_tvalid} gap between \texttt{sym[4]} of one bundle
+        and \texttt{sym[0]} of the next.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-08 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 27-Oct-2026, v2.7).}
+  \label{tab:pl08_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource     & Used  & Available  & Utilization \\
+    \hline
+    \ac{lut}     &  229  & 425{,}280  & 0.05\%      \\[2pt]
+    \ac{ff}      &  149  & 850{,}560  & $<0.01$\%   \\[2pt]
+    MUXF7        &   15  & N/A        & N/A          \\[2pt]
+    MUXF8        &    4  & N/A        & N/A          \\[2pt]
+    \ac{bram}    &    0  & 1{,}080    & 0.00\%      \\[2pt]
+    \ac{dsp}     &    0  & 4{,}272    & 0.00\%      \\[2pt]
+    UltraRAM     &    0  & 80         & 0.00\%      \\
+    \hline
+    \multicolumn{4}{p{13.5cm}}{\small \ac{ff} breakdown:
+      \texttt{state}~$= 1$, \texttt{drain\_cnt\_r}~$= 3$,
+      \texttt{tdata\_lat\_r}~$= 40$, \texttt{tlast\_lat\_r}~$= 1$,
+      \texttt{iq\_out\_r}~$= 102$ (declared 104-bit; bits~[103]
+      and~[51] constant-zero, stripped by synthesis),
+      \texttt{out\_valid\_r}~$= 1$, \texttt{out\_tlast\_r}~$= 1$.
+      Total~$= 149$. All are \texttt{FDRE} (synchronous reset).
+      \texttt{LUT as Memory}~$= 0$: \texttt{IQ\_ROM} constant-folded
+      into LUT6 logic by Vivado~2024.2; hardware-verified correct
+      (27-Oct-2026).} \\
+  \end{tabular}
+\end{table}
+
+\begin{table}[!h]
+  \caption{PL-08 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, 27-Oct-2026, v2.7).}
+  \label{tab:pl08_timing}
+  \centering
+  \begin{tabular}{lll}
+    \hline
+    Metric                   & 250\,MHz             & 100\,MHz           \\
+    \hline
+    WNS, setup               & $+0.925$\,ns (MET)   & $+6.872$\,ns (MET) \\[2pt]
+    WHS, hold                & $+0.038$\,ns (MET)   & $+0.052$\,ns (MET) \\[2pt]
+    Est.\ $F_{\max}$         & $\approx 325$\,MHz   & ---                \\[2pt]
+    Failing endpoints        & 0                    & 0                  \\
+    \hline
+    \multicolumn{3}{p{12.5cm}}{\small Critical path (250\,MHz):
+      \texttt{tdata\_lat\_r\_reg[30]} $\to$ \texttt{iq\_out\_r\_reg[42]};
+      4~logic levels (LUT6~$\times 3$, MUXF7~$\times 1$),
+      2.853\,ns total (logic 0.533\,ns, route 2.320\,ns).
+      WNS reduced from $+2.302$\,ns (v2.4, 32-bit \ac{rom}) to
+      $+0.925$\,ns (v2.7, 104-bit \ac{rom}): route-dominated
+      104-bit output fanout; 250\,MHz constraint met at all corners.} \\
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+Unit-level verification used the simple testbench
+\path{qam256_map_simple_tb.sv} (v1.1, 27/27 checks, 6/6 \ac{sva}
+assertions clean) and master testbench
+\path{qam256_map_master_tb.sv} (v1.1, 35/35 checks, 8/8 \ac{sva}
+assertions clean); these results constitute the v2.4 pass record.
+The \ac{fsm}, control logic, and \ac{axi}4-Stream handshake behavior
+are structurally unchanged in v2.7, so the testbench pass record
+remains valid for all logic outside the \ac{rom} and output-width path.
+The golden vector sweep confirmed 41{,}520/41{,}520 \ac{iq} pairs
+bit-exact across state transitions (G1), output validity and
+\texttt{tlast} placement on the correct symbol (G2), \ac{rom} address
+correctness for all five C-word positions within a bundle (G3), cold
+and mid-drain reset recovery (G4), drain counter wraparound using an
+exact equality check (G5), and backpressure stability including the
+inter-bundle \texttt{sym[4]} protection regression (G6).
+The master testbench additionally confirmed multi-frame \texttt{tlast}
+timing at the correct \ac{iq} index per frame (G7), back-to-back frame
+boundary \texttt{drain\_continue} correctness with no cross-bundle
+contamination (G8), and per-frame plus stateless replay equivalence
+(G9).
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{PL-08 hardware validation summary.}
+  \label{tab:pl08_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+    \hline
+    Bitfile & Clock & Method & Result & Date \\
+    \hline
+    \texttt{qam256\_map} standalone
+      & 250\,MHz
+      & \ac{rfsoc}~4x2 \ac{axi} \ac{dma} read/write~\cite{PYNQ_DOC};
+        input \path{stage6_trellis_cwords.bin}
+        (41{,}520 bytes; 4~frames);
+        output compared to
+        \path{stage7_fxp_real_fix51_49.bin} and
+        \path{stage7_fxp_imag_fix51_49.bin}
+        (Fix51\_49, int64)
+      & 41{,}520/41{,}520 \ac{iq} pairs bit-exact;
+        all 4~frames PASS;
+        \ac{rom} content and Q~sign fix
+        confirmed on silicon
+      & 27-Oct-2026 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Board validation of PL-08 was performed as a standalone deployment
+at 250\,MHz on the \ac{rfsoc}~4x2 board using an \ac{axi} \ac{dma}
+loopback test.
+The input trellis C-word vector
+\path{stage6_trellis_cwords.bin} was written to the module via
+\ac{dma} and the \ac{iq} output read back and compared against the
+MATLAB golden reference vectors.
+Bit-exact agreement across all 41{,}520 output pairs confirms that
+\texttt{IQ\_ROM} was correctly baked into the bitstream, that
+the Q~sign bit is preserved at \texttt{iq\_out\_r[102]} following the
+CHG-RTL-09 bit-width correction, and that the Fix51\_49 constellation
+quantization matches the MATLAB reference model.
+Post-implementation timing at the 250\,MHz constraint confirms
+$F_{\max} \approx 325$\,MHz with no failing
+endpoints~(Table~\ref{tab:pl08_timing}).
 
 \subsection{PL-09: SRRC FIR TX}
 \label{subsec:pl09}
