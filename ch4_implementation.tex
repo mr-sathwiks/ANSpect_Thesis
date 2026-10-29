@@ -3544,7 +3544,7 @@ Post-implementation confirms \texttt{LUT as Memory}~$= 0$: all 256
 entries are constant-folded into \ac{lut6} logic rather than
 \ac{lut}-\ac{ram}, which is the expected behavior for a read-only
 single-port array and is not a defect.
-Hardware \ac{dma} verification on 27-Oct-2026 confirmed the \ac{rom}
+Hardware \ac{dma} verification confirmed the \ac{rom}
 content was correctly baked into the bitstream and produces bit-exact
 \ac{iq} output.
 Table~\ref{tab:pl08_rom} lists the \ac{rom} configuration.
@@ -3575,7 +3575,7 @@ Table~\ref{tab:pl08_rom} lists the \ac{rom} configuration.
     Generator              & \path{write_qam_rom_fix51_49.m} via
                              ANSpect J.83B reference model \path{j83b_const256.mat} \\[2pt]
     Verification           & 256/256 entries; bijection confirmed;
-                             HW-PASS 27-Oct-2026
+                             HW-PASS
                              (41{,}520/41{,}520 \ac{iq} pairs bit-exact) \\
     \hline
   \end{tabular}
@@ -3590,6 +3590,35 @@ Table~\ref{tab:pl08_rom} lists the \ac{rom} configuration.
 
 Figure~\ref{fig:pl08_dataflow} shows the dataflow from one 40-bit
 input bundle to five sequential 128-bit output transfers.
+
+% [ALT: Dataflow diagram titled One 40-bit input bundle to 5 sequential
+%       128-bit output transfers. On the left a yellow box labeled Input
+%       40-bits s_axi_tdata[39:0] shows five labeled fields from top to
+%       bottom: sym[4] at [39:32], sym[3] at [31:24], sym[2] at [23:16],
+%       sym[1] at [15:8], sym[0] at [7:0]. The five fields feed into a
+%       5:1 MUX block. Below the MUX a circle labeled drain_cnt_r Cyclic
+%       Up-Counter n=0 to 4 provides the select input. The MUX output
+%       feeds a pink block labeled IQ_ROM 256 x 104-bits with the text
+%       IQ_ROM[sym[n]] inside. The ROM output feeds a green box labeled
+%       Output 128-bits m_axi_tdata[127:0] with IQ_ROM[sym[n]] 128-bit
+%       inside and the caption drain_cnt_r = n, one transfer per cycle,
+%       5 cycles per input bundle. At the bottom a blue bit packing table
+%       shows three columns: sym[n][127:102]=26b0 padding,
+%       sym[n][101:51]=Q signed fix51_49, sym[n][50:0]=I signed fix51_49.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.80\linewidth]{figures/ch4/ch4_pl08_dataflow}
+  \caption{PL-08 dataflow: one 40-bit input bundle serialized into five
+           sequential 128-bit \ac{iq} output transfers.
+           \texttt{drain\_cnt\_r} selects one C-word per cycle as the
+           \texttt{IQ\_ROM} address; the Fix51\_49 I and Q values
+           occupy \texttt{m\_axi\_tdata[50:0]} and
+           \texttt{m\_axi\_tdata[101:51]} respectively.}
+  \label{fig:pl08_dataflow}
+\end{figure}
+
+\FloatBarrier
+
 The five 8-bit C-words packed into \texttt{s\_axi\_tdata[39:0]} —
 \texttt{sym[0]} at \texttt{[7:0]} through \texttt{sym[4]} at
 \texttt{[39:32]} — are latched into \texttt{tdata\_lat\_r} at the
@@ -3615,34 +3644,38 @@ The 128-bit output bus assembles Q and I from the registered entry:
 I\_fix51[50:0] at \texttt{tdata[50:0]}.
 The 26 zero bits at \texttt{tdata[127:102]} are padding required to
 align the bus to a multiple of 8~bits~\cite{ARM_IHI0022}.
+Table~\ref{tab:pl08_fix51} defines the Fix51\_49 bit field;
+the format rationale and precision derivation are documented in
+Section~\ref{subsec:pl09}.
 
-% [ALT: Dataflow diagram titled One 40-bit input bundle to 5 sequential
-%       128-bit output transfers. On the left a yellow box labeled Input
-%       40-bits s_axi_tdata[39:0] shows five labeled fields from top to
-%       bottom: sym[4] at [39:32], sym[3] at [31:24], sym[2] at [23:16],
-%       sym[1] at [15:8], sym[0] at [7:0]. The five fields feed into a
-%       5:1 MUX block. Below the MUX a circle labeled drain_cnt_r Cyclic
-%       Up-Counter n=0 to 4 provides the select input. The MUX output
-%       feeds a pink block labeled IQ_ROM 256 x 104-bits with the text
-%       IQ_ROM[sym[n]] inside. The ROM output feeds a green box labeled
-%       Output 128-bits m_axi_tdata[127:0] with IQ_ROM[sym[n]] 128-bit
-%       inside and the caption drain_cnt_r = n, one transfer per cycle,
-%       5 cycles per input bundle. At the bottom a blue bit packing table
-%       shows three columns: sym[n][127:102]=26b0 padding,
-%       sym[n][101:51]=Q signed fix51_49, sym[n][50:0]=I signed fix51_49.]
-\begin{figure}[htbp]
+\begin{table}[htbp]
+  \caption{Fix51\_49 signed data format used for I and Q in
+           \texttt{m\_axi\_tdata}
+           (\texttt{fi(val,\,1,\,51,\,49)}, no scale factor).}
+  \label{tab:pl08_fix51}
   \centering
-  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_pl08_dataflow}
-  \caption{PL-08 dataflow: one 40-bit input bundle serialized into five
-           sequential 128-bit \ac{iq} output transfers.
-           \texttt{drain\_cnt\_r} selects one C-word per cycle as the
-           \texttt{IQ\_ROM} address; the Fix51\_49 I and Q values
-           occupy \texttt{m\_axi\_tdata[50:0]} and
-           \texttt{m\_axi\_tdata[101:51]} respectively.}
-  \label{fig:pl08_dataflow}
-\end{figure}
-
-\FloatBarrier
+  \small
+  \begin{tabular}{llll}
+    \hline
+    Field     & Bit position & Width & Description \\
+    \hline
+    Sign      & {[50]}       & 1     & Two's complement sign bit \\[2pt]
+    Integer   & {[49]}       & 1     & Integer magnitude bit \\[2pt]
+    Fraction  & {[48:0]}     & 49    & Fractional bits \\
+    \hline
+    Total     & {[50:0]}     & 51    & \texttt{fi(val,\,1,\,51,\,49)}, no scale~$S$ \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    Constellation levels $\in \{-15,\,-13,\,\ldots,\,+15\}/\sqrt{170}$;
+    $\max|\text{value}| \approx 1.1504$ requires 2~integer bits
+    (sign + magnitude).
+    Format rationale and PL-09 \ac{fir} \ac{ip} input constraint:
+    Section~\ref{subsec:pl09}.
+    Fixed-point design methodology: Section~\ref{subsec:fixed_point}.
+  \end{minipage}
+\end{table}
 
 Three correctness requirements govern the RTL implementation of this
 datapath.
@@ -3756,7 +3789,7 @@ protocol~\cite{ARM_IHI0022}.
 \begin{table}[!h]
   \caption{PL-08 post-implementation resource utilization
            (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
-           PRODUCTION, Vivado~2024.2, 27-Oct-2026, v2.7).}
+           PRODUCTION, Vivado~2024.2, v2.7).}
   \label{tab:pl08_resources}
   \centering
   \begin{tabular}{lrrl}
@@ -3771,23 +3804,23 @@ protocol~\cite{ARM_IHI0022}.
     \ac{dsp}     &    0  & 4{,}272    & 0.00\%      \\[2pt]
     UltraRAM     &    0  & 80         & 0.00\%      \\
     \hline
-    \multicolumn{4}{p{13.5cm}}{\small \ac{ff} breakdown:
-      \texttt{state}~$= 1$, \texttt{drain\_cnt\_r}~$= 3$,
-      \texttt{tdata\_lat\_r}~$= 40$, \texttt{tlast\_lat\_r}~$= 1$,
-      \texttt{iq\_out\_r}~$= 102$ (declared 104-bit; bits~[103]
-      and~[51] constant-zero, stripped by synthesis),
-      \texttt{out\_valid\_r}~$= 1$, \texttt{out\_tlast\_r}~$= 1$.
-      Total~$= 149$. All are \texttt{FDRE} (synchronous reset).
-      \texttt{LUT as Memory}~$= 0$: \texttt{IQ\_ROM} constant-folded
-      into LUT6 logic by Vivado~2024.2; hardware-verified correct
-      (27-Oct-2026).} \\
-  \end{tabular}
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    \ac{ff} breakdown: \texttt{state}~$= 1$, \texttt{drain\_cnt\_r}~$= 3$,
+    \texttt{tdata\_lat\_r}~$= 40$, \texttt{tlast\_lat\_r}~$= 1$,
+    \texttt{iq\_out\_r}~$= 102$ (declared 104-bit; bits~[103] and~[51]
+    constant-zero, stripped by synthesis), \texttt{out\_valid\_r}~$= 1$,
+    \texttt{out\_tlast\_r}~$= 1$. Total~$= 149$. All are \texttt{FDRE}
+    (synchronous reset). \texttt{LUT as Memory}~$= 0$: \texttt{IQ\_ROM}
+    constant-folded into LUT6 logic by Vivado~2024.2; hardware-verified correct.
+  \end{minipage}
 \end{table}
 
 \begin{table}[!h]
   \caption{PL-08 post-implementation timing summary
            (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
-           PRODUCTION, Vivado~2024.2, 27-Oct-2026, v2.7).}
+           PRODUCTION, Vivado~2024.2, v2.7).}
   \label{tab:pl08_timing}
   \centering
   \begin{tabular}{lll}
@@ -3799,14 +3832,17 @@ protocol~\cite{ARM_IHI0022}.
     Est.\ $F_{\max}$         & $\approx 325$\,MHz   & ---                \\[2pt]
     Failing endpoints        & 0                    & 0                  \\
     \hline
-    \multicolumn{3}{p{12.5cm}}{\small Critical path (250\,MHz):
-      \texttt{tdata\_lat\_r\_reg[30]} $\to$ \texttt{iq\_out\_r\_reg[42]};
-      4~logic levels (LUT6~$\times 3$, MUXF7~$\times 1$),
-      2.853\,ns total (logic 0.533\,ns, route 2.320\,ns).
-      WNS reduced from $+2.302$\,ns (v2.4, 32-bit \ac{rom}) to
-      $+0.925$\,ns (v2.7, 104-bit \ac{rom}): route-dominated
-      104-bit output fanout; 250\,MHz constraint met at all corners.} \\
-  \end{tabular}
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    Critical path (250\,MHz):
+    \texttt{tdata\_lat\_r\_reg[30]} $\to$ \texttt{iq\_out\_r\_reg[42]};
+    4~logic levels (LUT6~$\times 3$, MUXF7~$\times 1$),
+    2.853\,ns total (logic 0.533\,ns, route 2.320\,ns).
+    WNS reduced from $+2.302$\,ns (v2.4, 32-bit \ac{rom}) to
+    $+0.925$\,ns (v2.7, 104-bit \ac{rom}): route-dominated
+    104-bit output fanout; 250\,MHz constraint met at all corners.
+  \end{minipage}
 \end{table}
 
 \FloatBarrier
@@ -3822,22 +3858,29 @@ Unit-level verification used the simple testbench
 \path{qam256_map_simple_tb.sv} (v1.1, 27/27 checks, 6/6 \ac{sva}
 assertions clean) and master testbench
 \path{qam256_map_master_tb.sv} (v1.1, 35/35 checks, 8/8 \ac{sva}
-assertions clean); these results constitute the v2.4 pass record.
-The \ac{fsm}, control logic, and \ac{axi}4-Stream handshake behavior
-are structurally unchanged in v2.7, so the testbench pass record
-remains valid for all logic outside the \ac{rom} and output-width path.
-The golden vector sweep confirmed 41{,}520/41{,}520 \ac{iq} pairs
-bit-exact across state transitions (G1), output validity and
-\texttt{tlast} placement on the correct symbol (G2), \ac{rom} address
-correctness for all five C-word positions within a bundle (G3), cold
-and mid-drain reset recovery (G4), drain counter wraparound using an
-exact equality check (G5), and backpressure stability including the
-inter-bundle \texttt{sym[4]} protection regression (G6).
-The master testbench additionally confirmed multi-frame \texttt{tlast}
-timing at the correct \ac{iq} index per frame (G7), back-to-back frame
-boundary \texttt{drain\_continue} correctness with no cross-bundle
-contamination (G8), and per-frame plus stateless replay equivalence
-(G9).
+assertions clean); these results constitute the v2.4 pass record,
+which remains valid for v2.7 as the \ac{fsm}, control logic, and
+\ac{axi}4-Stream handshake behavior are structurally unchanged.
+Verification covered \ac{fsm} state transitions and \texttt{m\_tvalid}
+timing, \texttt{m\_axi\_tlast} placement on the fifth symbol only,
+\ac{rom} lookup correctness across all five drain counter positions
+using deterministic all-zero, all-\texttt{0xFF}, and single-symbol
+stimulus bundles, cold and mid-drain reset recovery, drain counter
+wraparound under backpressure, output stability during a 20-cycle
+downstream stall, and the inter-bundle boundary case confirming the
+input latch cannot be overwritten while a prior bundle's final symbol
+remains pending downstream.
+Multi-frame behavior was verified across four consecutive \ac{fec}
+frames, confirming exactly four \texttt{m\_axi\_tlast} assertions at
+the correct \ac{iq} positions, correct back-to-back frame boundary
+handling with no inter-bundle contamination, and stateless replay
+equivalence between isolated and full-run operation.
+Eight \ac{sva} assertions — covering output stability under
+backpressure, \texttt{tlast} gating by \texttt{tvalid}, drain counter
+bounds, and \ac{fsm} state validity — fired zero violations.
+The full four-frame golden vector sweep confirmed 41{,}520/41{,}520
+\ac{iq} pairs bit-exact against the MATLAB reference model
+\path{j83b_qam256_map.m} at full streaming rate.
 
 \textit{Hardware.}
 
@@ -3846,9 +3889,9 @@ contamination (G8), and per-frame plus stateless replay equivalence
   \label{tab:pl08_hw}
   \centering
   \small
-  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.2cm}l}
+  \begin{tabular}{p{3.2cm}lp{4.5cm}p{3.8cm}}
     \hline
-    Bitfile & Clock & Method & Result & Date \\
+    Bitfile & Clock & Method & Result \\
     \hline
     \texttt{qam256\_map} standalone
       & 250\,MHz
@@ -3862,8 +3905,7 @@ contamination (G8), and per-frame plus stateless replay equivalence
       & 41{,}520/41{,}520 \ac{iq} pairs bit-exact;
         all 4~frames PASS;
         \ac{rom} content and Q~sign fix
-        confirmed on silicon
-      & 27-Oct-2026 \\
+        confirmed on silicon \\
     \hline
   \end{tabular}
 \end{table}
