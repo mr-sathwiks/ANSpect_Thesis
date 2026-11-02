@@ -35,8 +35,7 @@ and the MATLAB-to-RTL methodology decision.
 
 
 % ============================================================
-% §2.1  What is an FPGA
-% STATUS: SKELETON — new section
+% §2.1  What is an FPGA  —  REWRITTEN (concise pass)
 % ============================================================
 
 \section{What is an FPGA}
@@ -45,125 +44,64 @@ and the MATLAB-to-RTL methodology decision.
 \acp{fpga} are reconfigurable integrated circuits whose logic and
 interconnect are defined by a configuration bitstream loaded at
 runtime~\cite{Kuon2007}.
-Unlike \acp{asic}, which are fixed at fabrication, or
-general-purpose processors, which execute sequential software,
-\acp{fpga} deliver parallel hardware execution while remaining
-reprogrammable~\cite{Kuon2007}.
-Modern devices have evolved into heterogeneous \acp{soc} integrating
-reconfigurable fabric, hardened processor cores, and, in the latest
-generations, directly integrated \ac{rf} data converters on a single
-die~\cite{Boppana2015}.
+Unlike \acp{asic}, fixed at fabrication, or general-purpose processors,
+which execute sequential software, \acp{fpga} deliver parallel hardware
+execution while remaining reprogrammable.
+Modern \ac{rfsoc}-class devices further integrate hardened processor
+cores and \ac{rf} data converters on the same die, eliminating the
+external converter interfaces required in multi-chip
+architectures~\cite{Boppana2015}.
 
 
 % ------------------------------------------------------------
 \subsection{Internal Architecture}
 \label{subsec:fpga_resources}
 
-The programmable logic of a Zynq~UltraScale+ \ac{fpga} is
-organized around four principal resource types: \acp{lut},
-\acp{ff}, hardened \ac{dsp} slices, and \ac{bram}.
-Each resource type serves a distinct role in implementing a
-digital signal processing pipeline, and their relative
-utilization governs the achievable throughput, clock frequency,
-and resource efficiency of a given
-design~\cite{AMD_UG574,AMD_UG579}.
+The programmable logic of a Zynq~UltraScale+ device is built from four
+principal resource types: \acp{lut}, \acp{ff}, hardened DSP48E2 slices,
+and \ac{bram}~\cite{AMD_UG574,AMD_UG579}.
 
 \paragraph{Look-Up Tables:}
-A \ac{lut} is a small programmable truth table that implements
-any combinational logic function of up to six binary
-inputs~\cite{AMD_UG574}.
-In the UltraScale+ architecture, eight \ac{lut6} primitives are
-grouped with dedicated carry logic into a \ac{clb}, the
-fundamental tiling unit of the reconfigurable
+A \ac{lut6} implements any combinational Boolean function of up to six
+inputs and is the fundamental logic primitive of the UltraScale+
 fabric~\cite{AMD_UG574}.
-Beyond combinational logic, a \ac{lut} may be configured as a
-small distributed RAM element or a shift-register delay line,
-providing additional flexibility for shallow buffering without
-consuming dedicated \ac{bram} resources~\cite{AMD_UG574}.
-In the J.83B processing chain implemented in this work,
-\acp{lut} realize the finite-state machines governing the
-trellis encoder and the convolutional interleaver commutator,
-the \ac{pn} sequence comparison logic of the randomizer, and
-the 256-QAM symbol look-up table that maps 8-bit C-words to
-complex constellation coordinates.
+Eight \ac{lut6} primitives are grouped with carry logic into a \ac{clb}.
+A \ac{lut} may also be configured as distributed \ac{ram} or a
+shift-register delay line, avoiding \ac{bram} consumption for shallow
+buffering.
 
 \paragraph{Programmable Interconnect:}
-The logic resources of an \ac{fpga} are connected through a
-programmable routing fabric composed of switch boxes, connection
-boxes, and routing channels~\cite{AMD_UG574}.
-A switch box sits at the intersection of horizontal and vertical
-routing channels and contains configurable pass transistors that
-determine which channel segments are joined, routing signals between
-non-adjacent \acp{clb} across the device~\cite{AMD_UG574}.
-Connection boxes link the input and output pins of each \ac{clb} to
-the adjacent routing channels, providing the interface between logic
-and interconnect~\cite{AMD_UG574}.
-In practice, routing delay through these switch boxes dominates the
-critical-path timing of most \ac{fpga} designs, making interconnect
-utilization and placement a primary constraint during timing
-closure~\cite{AMD_UG574}.
+Logic resources are connected through switch boxes and routing channels
+whose programmable pass transistors route signals between
+\acp{clb}~\cite{AMD_UG574}.
+In practice, routing delay through this fabric dominates critical-path
+timing and is the primary constraint during timing closure.
 
 \paragraph{Flip-Flops:}
-Each \ac{lut} primitive in the UltraScale+ \ac{clb} is paired
-with one or more \ac{ff} registers that capture and hold
-logic values on the rising edge of the
-clock~\cite{AMD_UG574}.
-Flip-flops serve as pipeline stage registers throughout a
-design, breaking long combinational paths into shorter segments
-and enabling the fabric to sustain higher clock
-frequencies~\cite{AMD_UG574}.
-In a pipelined \ac{dsp} datapath such as the J.83B transmit
-chain, \acp{ff} insert registered boundaries
-between each processing block to permit sustained throughput
-at the 250\,MHz \ac{pl} clock frequency available on the
-\ac{rfsoc}~4x2 platform~\cite{AMD_UG1085}.
-The pipeline depth, measured in clock cycles, determines the
-end-to-end latency through the chain, but does not reduce the
-steady-state symbol throughput once the pipeline is filled.
+Each \ac{lut6} is paired with one or more \ac{ff} registers that capture
+logic values on the rising clock edge~\cite{AMD_UG574}.
+Flip-flops break long combinational paths into shorter pipelined stages,
+enabling the fabric to sustain higher clock frequencies.
 
 \paragraph{DSP48E2 Slices:}
-The DSP48E2 is a hardened arithmetic primitive embedded
-throughout the UltraScale+ fabric that provides a
-27$\times$18-bit two's-complement multiplier cascaded with a
-48-bit accumulator~\cite{AMD_UG579}.
-A dedicated cascade port allows adjacent DSP48E2 slices to
-be chained together without consuming general routing
-resources, making the primitive well suited to
-\ac{mac}-intensive operations such as \ac{fir}
-filtering~\cite{AMD_UG579}.
-The UltraScale+ family provides approximately 12{,}000
-DSP48E2 slices capable of operating at approximately
-900\,MHz, representing a fourfold increase in \ac{dsp}
-bandwidth compared to the preceding 28\,nm
-generation~\cite{Boppana2015}.
-In the J.83B transmit chain, the \ac{srrc} pulse shaping
-filter is a 121-tap complex \ac{fir} kernel whose
-multiply-accumulate operations map directly onto DSP48E2
-slices, leveraging the cascade path to achieve the required
-throughput at the 250\,MHz fabric clock.
+The DSP48E2 is a hardened arithmetic primitive providing a
+27$\times$18-bit two's-complement multiplier cascaded with a 48-bit
+accumulator~\cite{AMD_UG579}.
+A dedicated cascade port allows adjacent slices to chain without
+consuming general routing resources, making them well suited to
+\ac{mac}-intensive operations such as \ac{fir} filtering.
+The UltraScale+ family provides approximately 12{,}000 DSP48E2
+slices capable of operating at approximately 900\,MHz~\cite{Boppana2015}.
 
 \paragraph{Block RAM:}
-\ac{bram} is a dedicated on-chip memory primitive available
-in 36\,Kbit units, each configurable as a true dual-port
-memory that supports simultaneous read and write access on
-independent ports at the full fabric clock
-rate~\cite{AMD_UG574}.
-The deterministic, single-cycle read latency of \ac{bram}
-makes it suitable for real-time streaming data paths where
-pipeline-regulated access timing is required~\cite{AMD_UG574}.
-In the J.83B implementation, \ac{bram} is used to implement
-the shift-register delay lines of the Forney convolutional
-interleaver, which requires $I\,(I-1)\,J = 16{,}256$ symbol
-positions of storage for the $I=128$, $J=1$ mode mandated by 
-the standard~\cite{ITU_J83}, as well as packet buffers in the \ac{axi} DMA
-data path between the processing system and the programmable
-logic.
+\ac{bram} is a dedicated on-chip memory primitive available in 36\,Kbit
+true dual-port units, supporting simultaneous read and write on
+independent ports at the full fabric clock rate~\cite{AMD_UG574}.
+The deterministic single-cycle read latency makes \ac{bram} suitable
+for real-time streaming data paths.
 
-The four resource types together define the programmable logic
-capacity available for implementing the complete J.83B
-processing chain.
-Table~\ref{tab:fpga_resources} summarizes each resource type
-and its primary role in this work.
+Table~\ref{tab:fpga_resources} summarizes each resource type and its
+primary role in this work.
 
 \begin{table}[htbp]
   \caption{UltraScale+ programmable logic resource types and
@@ -195,139 +133,78 @@ and its primary role in this work.
   \end{tabular}
 \end{table}
 
+
 % ------------------------------------------------------------
 \subsection{FPGA vs.\ ASIC: Why FPGA for Prototyping}
 \label{subsec:fpga_vs_asic}
 
-The selection of an \ac{fpga} over an \ac{asic} or a
-software-based processor for implementing the J.83B physical
-layer is motivated by three interconnected engineering
-arguments: reconfigurability without fabrication cost,
-throughput adequate for the target symbol rate, and the
-practical constraints of prototype-scale development.
+Three arguments motivate selecting an \ac{fpga} over an \ac{asic} or
+software processor for the J.83B physical layer prototype: zero
+\ac{nre} cost, parallel throughput exceeding the target symbol rate,
+and the maturity of the UltraScale+ platform for \ac{rfsoc} development.
 
 \paragraph{Reconfigurability and NRE Cost:}
-An \ac{asic} implementation of the J.83B processing chain
-would offer lower silicon area, higher clock rates, and lower
-power dissipation than an equivalent \ac{fpga}
-implementation~\cite{Kuon2007}.
-Kuon and Rose conducted empirical measurements across
-23 benchmark circuits implemented at the 90\,nm node in both
-an \ac{fpga} and equivalent standard-cell \ac{asic}
-technologies, and found that, for designs using only
-reconfigurable logic fabric, the \ac{fpga} silicon area
-is on average 35 times larger than the \ac{asic}
-counterpart, with a critical-path delay ratio of
-approximately 3.4 and a dynamic power consumption ratio of
-approximately 14~\cite{Kuon2007}.
-When designs exploit hardened heterogeneous blocks such as
-multiplier-accumulators and block memories, the area gap
-narrows substantially to an average of 18 times, because
-the \ac{fpga}'s dedicated primitives approach the
-efficiency of their \ac{asic} counterparts for those
-specific operations~\cite{Kuon2007}.
-
-These area, speed, and power penalties are accepted in
-exchange for two decisive practical advantages.
-First, an \ac{fpga} carries no \ac{nre} cost: unlike an
-\ac{asic}, which requires a photomask set and a fabrication 
-cycle of several months before any silicon is available for 
-testing~\cite{Kuon2007}, an \ac{fpga} is an off-the-shelf
-device programmed by downloading a bitstream in seconds.
-Design iterations that would require a costly re-spin on
-an \ac{asic} are accomplished on an \ac{fpga} by
-regenerating and reloading the bitstream, enabling the
-rapid algorithm-to-hardware iteration cycle that
-prototype and research implementations demand~\cite{Kuon2007}.
-For low-volume production, including academic research
-platforms, the per-unit device cost of an \ac{fpga} is
-manageable without volume to amortize \ac{asic}
-\ac{nre} expenditure~\cite{Kuon2007}.
+Kuon and Rose measured the implementation gap between \ac{fpga} and
+standard-cell \ac{asic} across 23 benchmark circuits at the 90\,nm
+node: using reconfigurable fabric alone, the \ac{fpga} silicon area
+is on average 35$\times$ larger, critical-path delay 3.4$\times$ slower,
+and dynamic power 14$\times$ higher; exploiting hardened blocks such as
+multiplier-accumulators and block memories narrows the area ratio
+to 18$\times$~\cite{Kuon2007}.
+These penalties are accepted in exchange for zero \ac{nre} cost and
+instant design iteration: a bitstream reload replaces the multi-month
+\ac{asic} re-spin cycle, making \acp{fpga} the standard substrate for
+prototype and research-scale implementations~\cite{Kuon2007}.
 
 \paragraph{Throughput Advantage Over Software Processors:}
-A software implementation of the J.83B chain on a
-general-purpose or \ac{dsp} processor would serialize the
-eight-stage processing chain, reducing throughput relative
-to the hardware-parallel \ac{fpga} realization.
-Diouri et al.\ compared the implementation of a 40th-order
-bandpass \ac{fir} filter on an Altera Cyclone~III \ac{fpga}
-and a Texas Instruments TMS320C6713 \ac{dsp} processor under
-identical computational objectives~\cite{Diouri2022}.
-The \ac{fpga} implementation achieved an estimated throughput
-of 3.4\,Gops/s at 122\,MHz with 28 active multiplier
-elements, compared to 1.8\,Gops/s for the \ac{dsp} processor
-operating at 225\,MHz~\cite{Diouri2022}.
-The \ac{fpga} power consumption was measured at approximately
-95\,mW, versus a peak of 900\,mW for the \ac{dsp}
-processor at full utilization~\cite{Diouri2022}.
-The throughput advantage of the \ac{fpga} arises from its
-fully parallel datapath: all multiply-accumulate operations
-within a filter tap execute simultaneously in hardware, whereas
-the \ac{dsp} processor executes one multiply-accumulate
-per instruction cycle~\cite{Diouri2022}.
-For the J.83B symbol rate of 5.360537\,Msym/s~\cite{ITU_J83}, the parallel
-\ac{fpga} datapath provides the throughput margin necessary
-to implement each processing stage as a pipelined hardware
-module operating within the 250\,MHz \ac{pl} clock budget.
+Diouri et al.\ compared a 40th-order bandpass \ac{fir} filter on an
+Altera Cyclone~III \ac{fpga} and a TMS320C6713 \ac{dsp} processor: the
+\ac{fpga} achieved 3.4\,Gops/s at 122\,MHz drawing 95\,mW, versus
+1.8\,Gops/s at 225\,MHz drawing 900\,mW for the
+processor~\cite{Diouri2022}.
+The throughput advantage arises from fully parallel datapath execution:
+all \ac{mac} operations proceed simultaneously in hardware, whereas a
+processor executes one per instruction cycle~\cite{Diouri2022}.
+The 5.360537\,Msym/s J.83B symbol rate is well within the margin
+available from a pipelined \ac{pl} fabric at 250\,MHz~\cite{ITU_J83}.
 
 \paragraph{UltraScale+ as a Prototyping Substrate:}
-The Zynq~UltraScale+ \ac{rfsoc} device used in this work
-integrates a high-performance reconfigurable logic fabric
-with an \ac{arm} Cortex-A53 processing system, approximately
-12{,}000 DSP48E2 slices at 900\,MHz, and directly integrated
-radio-frequency data converters on a single 16\,nm FinFET
-die~\cite{Boppana2015}.
-The 16\,nm FinFET process delivers 60\% higher programmable
-logic performance and 2.5 times greater performance per watt
-compared to the preceding 28\,nm generation, while the
-fourfold increase in \ac{dsp} bandwidth enables
-computationally intensive blocks such as the \ac{srrc}
-pulse shaping filter to be realized entirely within the
-\ac{pl} fabric~\cite{Boppana2015}.
-The monolithic integration of the \ac{rf} data converters
-eliminates the external converter interfaces that contribute latency 
-and power overhead in multi-chip architectures~\cite{Javaid2022},
-and the PYNQ framework provides a Python-based host interface
-to the programmable logic overlay that accelerates the
-prototype iteration cycle without requiring a low-level embedded 
-software development environment~\cite{Kovacs2024}.
-Taken together, these properties establish the
-Zynq~UltraScale+ \ac{rfsoc} as an appropriate platform
-for prototyping and validating the J.83B transmit
-chain implemented in this thesis.
+The Zynq~UltraScale+ \ac{rfsoc} integrates reconfigurable logic, a
+hardened \ac{arm} processor, and \ac{rf} data converters on a single
+16\,nm FinFET die, delivering 60\% higher logic performance and
+2.5$\times$ greater performance per watt relative to the preceding
+28\,nm generation~\cite{Boppana2015}.
+The specific platform used in this work and its subsystems are described
+in Section~\ref{sec:rfsoc4x2}.
 
 %\clearpage
 
 % ============================================================
-% §2.2  FPGA Programming and Design Flow
-% STATUS: SKELETON — new section (absorbs former §2.6)
+% §2.2  FPGA Programming and Design Flow  —  REWRITTEN (concise pass)
+% Option A: §2.2.4 merged into §2.2.1; §2.2.4 removed.
+% NOTE: \label{subsec:vivado_flow} retained on §2.2.1 so that
+%       frozen §2.6 PYNQ cross-reference resolves without change.
 % ============================================================
 
 \section{FPGA Programming and Design Flow}
 \label{sec:fpga_programming}
 
-Hardware functionality is described in an \ac{hdl} such as
-SystemVerilog or \ac{vhdl} and compiled into a device-specific
-bitstream through a sequence of synthesis, place-and-route, and
-bitstream generation steps~\cite{AMD_UG892}.
-The bitstream is then loaded into the \ac{fpga} to configure its
-logic and interconnect resources.
-Section~\ref{subsec:hdl_to_bitstream} describes this flow
-conceptually; Sections~\ref{subsec:ip_integrator}
-through~\ref{subsec:vivado_flow} describe its realization in the
-AMD Vivado toolchain used in this work.
+Hardware functionality is described in an \ac{hdl} and compiled into a
+device-specific bitstream through synthesis, place-and-route, and
+bitstream generation~\cite{AMD_UG892}.
+This section describes that flow and its realization in the AMD Vivado
+toolchain used in this work.
 
 
 % ------------------------------------------------------------
 \subsection{HDL-to-Bitstream Flow}
 \label{subsec:hdl_to_bitstream}
+\label{subsec:vivado_flow}% retained for cross-references in §2.6
 
-Hardware for an \ac{fpga} is described in an \ac{hdl} —
-SystemVerilog, \ac{vhdl}, or Verilog — or generated from a
-higher-level tool such as MATLAB HDL Coder or
-CyberWorkBench~\cite{AMD_UG892}.
-Figure~\ref{fig:hdl_bitstream_flow} shows the compilation
-stages from \ac{hdl} source to a configured device.
+Figure~\ref{fig:hdl_bitstream_flow} shows the compilation stages from
+\ac{hdl} source — SystemVerilog, \ac{vhdl}, Verilog, or a
+higher-level tool such as MATLAB HDL Coder — to a configured
+device~\cite{AMD_UG892}.
 
 % [ALT: HDL-to-Bitstream flow diagram showing five stages: HDL Source
 %  (SystemVerilog / VHDL / Verilog; MATLAB HDL Coder / CyberWorkBench),
@@ -346,256 +223,117 @@ stages from \ac{hdl} source to a configured device.
 \end{figure}
 
 \paragraph{Synthesis:}
-The synthesizer processes the \ac{hdl} source in two steps.
-First, elaboration converts the \ac{hdl} into a generic
-netlist of logic primitives — \acp{ff}, logic gates,
-multiplexers, adders, and multipliers~\cite{AMD_UG892}.
-Second, technology mapping converts these generic primitives
-into the device-specific resources available on the target
-\ac{fpga} — \acp{lut6}, \texttt{FDRE} registers, and
-DSP48E2 slices — producing a mapped netlist expressed
-entirely in terms of UltraScale+ primitives~\cite{AMD_UG574,AMD_UG579}.
+Vivado synthesis elaborates the \ac{hdl} source into a generic netlist
+then maps it onto UltraScale+ primitives~\cite{AMD_UG892}.
+Arithmetic and memory structures are inferred automatically:
+multiply-accumulate operations map to DSP48E2 slices, and inferred
+memories map to \ac{bram} or distributed \ac{ram} as appropriate.
 
 \paragraph{Implementation:}
-Implementation accepts the mapped netlist and proceeds through
-three stages~\cite{AMD_UG892}.
-Logic optimization (\texttt{opt\_design}) refines the mapped
-netlist before placement.
-The placer then assigns each primitive to a physical site on
-the device die~\cite{AMD_UG574}.
-The router determines which switch boxes and routing channels
-connect the placed primitives, configuring the programmable
-interconnect to realize the required signal paths~\cite{AMD_UG574}.
-Throughout placement and routing, the timing analyzer checks
-whether all paths meet the setup and hold constraints at the
-target clock frequency; if constraints are not met, the
-\ac{rtl} or implementation directives are revised and the
-flow repeats~\cite{AMD_UG892}.
+Implementation places each primitive at a physical site on the die
+and routes the interconnect between them~\cite{AMD_UG892}.
+The timing analyzer verifies that all paths meet setup and hold
+constraints at the target clock frequency; if not, the \ac{rtl} or
+directives are revised and the flow repeats.
 
-\paragraph{Bitstream Generation and Configuration:}
-Once timing closure is achieved, the bitstream generator
-produces the binary \texttt{.bit} file that encodes the
-complete device configuration~\cite{AMD_UG892}.
-The bitstream is loaded into the \ac{fpga} through \ac{jtag},
-non-volatile flash, or, in this work, the PYNQ overlay
-loader~\cite{PYNQ_DOC}.
-The specific Vivado realization of this flow for the J.83B
-transmit chain is described in
-Sections~\ref{subsec:ip_integrator}--\ref{subsec:vivado_flow}.
+\paragraph{Bitstream Generation and Hardware Handoff:}
+Once timing closure is achieved, Vivado simultaneously generates the
+binary \texttt{.bit} configuration file and exports the hardware
+handoff (\texttt{.hwh}) from the block design~\cite{AMD_UG892}.
+The \texttt{.hwh} records the \ac{ip} address map and interface
+metadata used by the PYNQ overlay loader; together, the
+\texttt{.bit} and \texttt{.hwh} constitute the complete \ac{pl}
+overlay deliverable of this thesis~\cite{PYNQ_DOC,Kovacs2024}.
 
 
 % ------------------------------------------------------------
 \subsection{Vivado IP Integrator Block Design}
 \label{subsec:ip_integrator}
 
-The Vivado \ac{ip} Integrator is a graphical design canvas
-in which \ac{ip} cores are instantiated as blocks and
-connected by drawing wires between their
-ports~\cite{AMD_UG994}.
-The resulting block design is a self-contained description
-of the \ac{pl} hardware that captures the \ac{axi}
-interconnect topology, the clock and reset routing, and the
-\ac{ps}--\ac{pl} port bindings in a single
-artifact~\cite{AMD_UG994}.
+The Vivado \ac{ip} Integrator is a graphical design canvas in which
+\ac{ip} cores are instantiated as blocks and wired together through
+their typed interface ports~\cite{AMD_UG994}.
+The block design captures the full \ac{pl} hardware topology —
+interconnect, clocking, and \ac{ps}--\ac{pl} port bindings — as a
+single source artifact that drives both synthesis and
+\texttt{.hwh} export.
 
-\paragraph{Zynq PS IP:}
-The \ac{ps} subsystem of the ZU48DR is represented in the
-block design by the Zynq UltraScale+ \ac{mpsoc} \ac{ip}
-core, which generates the \ac{ps} hardware
-configuration~\cite{AMD_UG1085}.
-A graphical configuration dialog controls which \ac{ps}
-peripherals are enabled, the \ac{ddr}4 memory interface
-parameters, the \ac{pl} clock outputs, and the mapping
-of \ac{hp} and general-purpose \ac{axi} ports to the
-\ac{pl} interconnect~\cite{AMD_UG1085}.
-Exporting the block design from this \ac{ip} core produces
-the hardware platform file consumed by downstream Vitis
-or PYNQ flows~\cite{PYNQ_DOC}.
-
-\paragraph{AXI SmartConnect:}
-The AMD SmartConnect \ac{ip} core manages the \ac{axi}
-interconnect between the \ac{ps} master ports and the
-slave register interfaces of the \ac{pl} \ac{ip}
-cores~\cite{AMD_UG994}.
-It performs clock crossing, data-width conversion, and
-arbitration automatically, allowing \ac{ip} cores
-operating in different \ac{axi} configurations to be
-connected without manual bridging logic~\cite{AMD_UG994}.
+\paragraph{IP Catalog:}
+The \ac{ip} catalog is the searchable library from which cores are
+instantiated onto the canvas~\cite{AMD_UG994}.
+It includes Xilinx LogiCORE primitives, third-party cores, and
+user-packaged custom \ac{rtl} modules added through a local
+repository path; all cores expose typed bus interfaces so that
+compliant connections can be made with a single wire on the canvas.
 
 \paragraph{Address Editor:}
-The Vivado address editor assigns each \ac{axi}4-Lite
-slave in the block design a unique base address within
-the \ac{ps} memory map~\cite{AMD_UG1085}.
-These addresses are exported to the \texttt{.hwh} file
-at implementation, where the PYNQ overlay parser reads
-them to construct the Python \ac{ip} dictionary described
-in Section~\ref{subsec:pynq_overlay}~\cite{PYNQ_DOC}.
-Every custom \ac{rtl} module that exposes an \ac{axi}4-Lite
-register file receives a unique base address in this editor,
-making its registers directly addressable by the \ac{arm}
-Cortex-A53~\cite{AMD_UG1085}.
+The address editor assigns each \ac{axi}4-Lite slave a unique base
+address within the \ac{ps} memory map~\cite{AMD_UG1085}.
+These assignments are exported to the \texttt{.hwh} file at
+implementation and consumed by the PYNQ overlay parser to construct
+the Python \ac{ip} dictionary described in
+Section~\ref{subsec:pynq_overlay}~\cite{PYNQ_DOC}.
 
 
 % ------------------------------------------------------------
 \subsection{IP Packaging: Custom RTL Modules}
 \label{subsec:ip_packaging}
 
-Before a custom \ac{rtl} module can be instantiated in
-the Vivado \ac{ip} Integrator block design, it must be
-packaged as a Vivado \ac{ip} core using the Vivado
-\ac{ip} Packager~\cite{AMD_UG994}.
-The packager wraps a SystemVerilog \ac{rtl} source
-hierarchy in a standardized IP-XACT descriptor
-that the block design canvas can discover, instantiate,
-and connect~\cite{AMD_UG994}.
+Before a custom \ac{rtl} module can be instantiated in the block
+design, it must be packaged as a Vivado \ac{ip} core using the
+Vivado \ac{ip} Packager, which wraps the source hierarchy in a
+standardized IP-XACT descriptor~\cite{AMD_UG994}.
 
 \paragraph{AXI Port Inference:}
-The Vivado \ac{ip} Packager infers \ac{axi} interface
-types from the port naming conventions of the \ac{rtl}
-module~\cite{AMD_UG994}. 
-Ports whose names follow the \ac{axi}4-Stream prefix
-convention (\texttt{s\_axis\_*} for slave,
-\texttt{m\_axis\_*} for master) are automatically
-grouped into typed \ac{axi}4-Stream interface objects
-that the block design canvas can connect with a single
-wire, rather than requiring individual port-to-port
-connections~\cite{AMD_UG994}.
-Similarly, \ac{axi}4-Lite register file ports are
-inferred from the \texttt{s\_axi\_*} naming
-convention~\cite{AMD_UG994}.
+The packager infers \ac{axi} interface types from port naming
+conventions: \texttt{s\_axis\_*} / \texttt{m\_axis\_*} ports are
+grouped into typed \ac{axi}4-Stream interface objects, and
+\texttt{s\_axi\_*} ports are inferred as \ac{axi}4-Lite register
+file interfaces~\cite{AMD_UG994}.
+This allows the block design canvas to connect compliant interfaces
+with a single wire rather than individual port-to-port connections.
 
 \paragraph{component.xml:}
-The output of the packaging step is a
-\texttt{component.xml} file that defines the \ac{ip}
-core interface, its port groupings, bus interface
-protocols, and any user-visible parameters exposed
-through the block design configuration
-dialog~\cite{AMD_UG994}.
-The packaged core is stored in the Vivado \ac{ip}
-repository and is available for instantiation in any
-block design that references that repository
-path~\cite{AMD_UG994}.
-The packaging approach therefore supports a modular
-design methodology in which each \ac{rtl} stage of
-the J.83B processing chain is developed, verified,
-and packaged independently before integration into
-the top-level block design~\cite{Kovacs2024}.
-
-
-% ------------------------------------------------------------
-\subsection{Synthesis, Implementation, and Bitstream Generation}
-\label{subsec:vivado_flow}
-
-Following block design completion, the Vivado flow
-proceeds through three sequential compilation stages
-that transform the \ac{rtl} and block design sources
-into a device-specific binary configuration:
-synthesis, implementation, and bitstream
-generation~\cite{AMD_UG892}.
-
-\paragraph{Synthesis:}
-Synthesis translates the \ac{rtl} source files and
-the block design wrapper into a technology-mapped
-netlist expressed in terms of UltraScale+ primitives
-such as \ac{lut6}, \ac{ff}, DSP48E2, and
-\ac{bram}~\cite{AMD_UG892}.
-The synthesizer performs combinational optimization,
-register retiming, and resource inference, converting
-inferred arithmetic operations into DSP48E2 instances
-and inferred memories into \ac{bram} or distributed
-\ac{ram} primitives as appropriate~\cite{AMD_UG892}.
-The synthesis report lists resource utilization
-estimates and identifies any \ac{rtl} constructs
-that could not be mapped to available
-primitives~\cite{AMD_UG892}.
-
-\paragraph{Implementation:}
-Implementation places the synthesized netlist onto
-the physical sites of the ZU48DR die and routes the
-interconnect between placed
-primitives~\cite{AMD_UG892}. 
-The placer assigns each \ac{lut}, \ac{ff}, DSP48E2,
-and \ac{bram} instance to a specific site on the
-\ac{cl} fabric, subject to timing, power, and
-congestion constraints~\cite{AMD_UG892}. 
-The router then connects the placed instances through
-the UltraScale+ programmable interconnect, and the
-timing analyzer verifies that every combinational
-path in the design meets its setup and hold
-constraints at the target clock
-frequency~\cite{AMD_UG892}. 
-A design that fails timing closure must be modified
-through pipeline stage insertion, constraint
-relaxation, or \ac{rtl} restructuring and
-re-implemented until all paths meet their
-constraints~\cite{AMD_UG892}. 
-
-\paragraph{Bitstream Generation:}
-Once implementation achieves timing closure, the
-Vivado bitstream generator converts the placed and
-routed netlist into the binary \texttt{.bit} file
-that programs the UltraScale+ configuration
-memory~\cite{AMD_UG892}.
-Vivado simultaneously exports the hardware handoff
-(\texttt{.hwh}) file from the block design, which
-records the \ac{ip} address map and interface
-metadata used by the PYNQ overlay loader~\cite{PYNQ_DOC}.
-The \texttt{.bit} and \texttt{.hwh} files together
-constitute the complete \ac{pl} overlay deliverable
-of this thesis~\cite{PYNQ_DOC,Kovacs2024}.
+The packaging step produces a \texttt{component.xml} file defining
+the core's port groupings, bus interface protocols, and
+user-visible parameters~\cite{AMD_UG994}.
+The packaged core is stored in the Vivado \ac{ip} repository and is
+available for instantiation in any block design referencing that
+path, supporting a modular flow in which each J.83B processing
+stage is developed and packaged independently before
+integration~\cite{Kovacs2024}.
 
 %\clearpage
 
 
 % ============================================================
-% §2.3  Platform: RFSoC 4x2
-% STATUS: PARTIAL — new preamble required; existing §2.2 content carries forward
+% §2.3  Zynq UltraScale+ RFSoC 4x2  —  REWRITTEN (concise pass)
+% Changes vs original:
+%   - Intro: family landscape paragraph removed; integration-advantage
+%     paragraph removed (repeats §2.1.2); 4 sentences retained.
+%   - §2.3.1: APU → 2 sentences; RPU → 1 sentence.
+%   - §2.3.2: 47× calculation collapsed; tab:zu48dr_resources trimmed
+%     to implementation-relevant rows only.
+%   - §2.3.3: tile-by-tile ADC/DAC enumeration removed; latency
+%     compressed; tab:rfdc_tile_map removed (figure covers it);
+%     tab:rfdc_params trimmed to configured parameters only.
+%   - §2.3.4 SD-FEC: removed (not used in this work).
+%   - §2.3.5: forward-application tails removed from HP/GP paragraphs.
 % ============================================================
 
 \section{Zynq UltraScale+ RFSoC~4x2}
 \label{sec:rfsoc4x2}
 
-Xilinx \ac{fpga} devices span a range of families targeting
-different performance and cost points: Artix for cost-sensitive
-applications, Kintex for mid-range performance, and Virtex for
-high-end designs requiring maximum logic density~\cite{Boppana2015}.
-The Zynq family extends this range by integrating an \ac{arm}
-processing system with the programmable logic fabric on a single
-die, and the \ac{rfsoc} tier further adds directly integrated
-\ac{rf} data converters, eliminating the external converter
-interfaces required in conventional multi-chip
-architectures~\cite{Boppana2015}.
-
-The \ac{rfsoc}~4x2 development board was provided by ANSpect
-as the target hardware platform for this work.
-
-The RFSoC~4x2 is a development board produced by Real Digital
-in partnership with AMD~\cite{Kovacs2024}.
-The board is built around the AMD Zynq~UltraScale+
-ZU48DR device, a third-generation member of the
-\ac{rfsoc} product family that monolithically integrates
-a multi-core \ac{arm} processing system, a high-density
-UltraScale+ programmable logic fabric, and directly
-integrated \ac{rf}-class analog data converters on a
-single 16\,nm FinFET die~\cite{Boppana2015,Kovacs2024}.
-
-The integration of analog and digital subsystems on a
-common die eliminates the external data converter
-interfaces and interboard interconnects that contribute
-latency, power overhead, and signal integrity constraints
-in conventional multi-chip \ac{rf} signal processing
-architectures~\cite{Javaid2022}.
-The ZU48DR device therefore provides a compact,
-single-board platform on which the J.83B transmit
-processing chain can be implemented, verified,
-and characterized.
-
-The principal subsystems of the ZU48DR relevant to this
-work are the processing system, the programmable logic
-fabric, the integrated \ac{rf} data converter, and the
-hardened \ac{sdfec} cores.
-Each is described in the sections that follow;
-Figure~\ref{fig:rfsoc4x2_block} provides a top-level overview of the board subsystem layout.
+The \ac{rfsoc} device class extends the Zynq family by integrating
+\ac{rf}-class analog data converters directly onto the same 16\,nm
+FinFET die as the \ac{arm} processing system and the UltraScale+
+programmable logic fabric~\cite{Boppana2015}.
+The \ac{rfsoc}~4x2 development board, provided by ANSpect as the
+target hardware platform for this work, is built around the AMD
+Zynq~UltraScale+ ZU48DR — a third-generation \ac{rfsoc} device~\cite{Kovacs2024}.
+The principal subsystems of the ZU48DR relevant to this work are
+described below; Figure~\ref{fig:rfsoc4x2_block} provides a
+top-level overview.
 
 % [ALT: Block diagram of the RFSoC 4x2 board showing the principal subsystems:
 %  ARM Cortex-A53/R5 Processing System, UltraScale+ Programmable Logic fabric,
@@ -612,104 +350,40 @@ Figure~\ref{fig:rfsoc4x2_block} provides a top-level overview of the board subsy
   \label{fig:rfsoc4x2_block}
 \end{figure}
 
+
 % ------------------------------------------------------------
 \subsection{Processing System: ARM Cortex-A53}
 \label{subsec:ps_arm}
 
-The \ac{ps} of the ZU48DR is a heterogeneous
-multi-processor complex that contains two independent
-processor clusters operating at distinct privilege and
-performance levels~\cite{Boppana2015,AMD_UG1085}.
-
-\paragraph{Application Processing Unit:}
-The \ac{apu} consists of four ARM Cortex-A53 cores
-implementing the 64-bit ARMv8-A instruction set
-architecture at a clock frequency of up to
-1.2\,GHz~\cite{AMD_UG1085}.
-Each Cortex-A53 core includes a 32\,KB level-one
-instruction cache and a 32\,KB level-one data cache with
-ECC protection, and the four cores share a 1\,MB
-level-two unified cache~\cite{AMD_UG1085}.
-The \ac{apu} supports a 64-bit \ac{ddr}4 external
-memory interface with ECC, providing the high-bandwidth
-system memory required for the \ac{dma} data paths
-connecting the processing system to the programmable
-logic~\cite{AMD_UG1085}.
-A full-featured Linux environment runs on the \ac{apu},
-and the PYNQ framework exposes the programmable logic
-overlay to the host through a Python \ac{api} that
-operates within this Linux environment~\cite{Kovacs2024}.
-
-\paragraph{Real-Time Processing Unit:}
-The \ac{rpu} consists of two ARM Cortex-R5F cores
-implementing the 32-bit ARMv7-R instruction set
-at up to 600\,MHz~\cite{Boppana2015,AMD_UG1085}.
-The Cortex-R5F cores support both lockstep and
-split-mode operation: in lockstep mode the two cores
-execute identical instruction streams in parallel for
-fault detection, while in split mode they execute
-independent tasks simultaneously~\cite{AMD_UG1085}.
-Each core includes a tightly coupled memory
-interface that provides deterministic, low-latency
-access to on-chip instruction and data memory without
-cache miss penalties, making the \ac{rpu} suitable
-for real-time control tasks that require bounded
-execution time~\cite{AMD_UG1085}.
-In the implementation described in Chapter~4, the
-\ac{apu} under Linux manages all data plane transfers
-and configuration of the programmable logic;
+The \ac{ps} of the ZU48DR contains a quad-core ARM Cortex-A53
+\ac{apu} running at up to 1.2\,GHz with a 64-bit \ac{ddr}4
+memory interface~\cite{AMD_UG1085}.
+A full Linux environment runs on the \ac{apu}, and the PYNQ
+framework exposes the \ac{pl} overlay to the host through a
+Python \ac{api} operating within that environment~\cite{Kovacs2024}.
+The \ac{ps} also contains a dual-core ARM Cortex-R5F \ac{rpu};
 the \ac{rpu} is not used in this work.
+
 
 % ------------------------------------------------------------
 \subsection{Programmable Logic: UltraScale+ Fabric}
 \label{subsec:pl_fabric}
 
-The programmable logic fabric of the ZU48DR is an
-UltraScale+ array whose resource classes were described
-individually in Section~\ref{subsec:fpga_resources}.
-The fabric provides the configurable logic blocks,
-DSP48E2 slices, block RAM, and UltraRAM primitives
-required to implement the J.83B processing pipeline
-as a collection of pipelined hardware
-modules~\cite{Boppana2015,AMD_UG1085}.
+The programmable logic fabric of the ZU48DR is an UltraScale+ array
+whose resource types were described in
+Section~\ref{subsec:fpga_resources}.
+The fabric operates from \texttt{pl\_clk} at 250\,MHz, which
+drives all \ac{axi}4-Stream pipeline modules and \ac{dma} engines
+in this implementation~\cite{AMD_UG1085}.
+At 250\,MHz the fabric clock provides throughput well in excess of
+the 5.360537\,Msym/s J.83B symbol rate across all implemented
+pipeline stages~\cite{ITU_J83}.
 
-The \ac{pl} fabric operates from a reference clock
-derived from the \ac{ps} clock wizard, designated
-\texttt{pl\_clk0}, at a frequency of 250\,MHz,
-which drives all \ac{axi}4-Stream data path modules
-and the \ac{dma} engines in the
-implementation~\cite{AMD_UG1085}.
-In the theoretical limit of one symbol per clock
-cycle, the fabric clock would support a maximum
-symbol throughput of 250\,Msym/s, exceeding the
-5.360537\,Msym/s J.83B symbol rate~\cite{ITU_J83}
-by a factor of approximately~47.
-In practice, the achievable throughput is determined
-by the pipeline architecture of the \ac{rtl} modules
-instantiated on the \ac{pl} fabric, which introduces
-multi-cycle latency stages in the Reed-Solomon
-encoder, convolutional interleaver, and \ac{srrc}
-pulse shaping filter; the 250\,MHz clock domain
-nonetheless provides ample throughput margin for
-the 5.360537\,Msym/s target rate across all
-implemented pipeline stages.
-
-The \ac{pl} fabric communicates with the \ac{ps}
-through a set of high-bandwidth \ac{axi} interconnect
-ports described in Section~\ref{subsec:ps_pl_integration}.
-All \ac{rtl} modules implementing the J.83B processing
-stages are packaged as Vivado \ac{ip} cores with
-\ac{axi}4-Stream data interfaces and \ac{axi}4-Lite
-control interfaces, and are integrated into the
-block design as described in
-Section~\ref{subsec:ip_integrator}~\cite{Kovacs2024}.
-
-Table~\ref{tab:zu48dr_resources} lists the available logic
-resource counts for the XCZU48DR device as specified
-in the product data sheet~\cite{AMD_DS889}.
+Table~\ref{tab:zu48dr_resources} lists the logic resources of the
+ZU48DR relevant to this implementation.
 
 \begin{table}[htbp]
-  \caption{Available logic resources of the AMD Zynq~UltraScale+
+  \caption{Selected logic resources of the AMD Zynq~UltraScale+
            XCZU48DR device~\cite{AMD_DS889}.}
   \label{tab:zu48dr_resources}
   \centering
@@ -721,134 +395,48 @@ in the product data sheet~\cite{AMD_DS889}.
     CLB Flip-Flops               & 850{,}560 \\[3pt]
     DSP48E2 Slices               & 4{,}272   \\[3pt]
     Block RAM (36\,Kb tiles)     & 1{,}080   \\[3pt]
-    UltraRAM (288\,Kb blocks)    & 80        \\[3pt]
-    Clock Management Tiles (CMT) & 8         \\[3pt]
-    High-Performance (HP) I/O    & 299       \\[3pt]
-    High-Density (HD) I/O        & 48        \\[3pt]
-    GTY Transceivers             & 16        \\[3pt]
-    SD-FEC Cores (hardened)      & 8         \\[3pt]
     RF-ADC Channels (total)      & 8         \\[3pt]
     RF-DAC Channels (total)      & 8         \\
     \hline
   \end{tabular}
 \end{table}
 
+
+% ------------------------------------------------------------
 \subsection{RF Data Converter: DAC/ADC Architecture}
 \label{subsec:rfdc_background}
 
-The defining feature of the \ac{rfsoc} device class is
-the monolithic integration of high-speed analog data
-converters with the digital logic fabric on a single
-die~\cite{Boppana2015}.
-The ZU48DR integrates four \ac{rf}-\ac{adc} tiles and
-four \ac{rf}-\ac{dac} tiles, each tile containing
-multiple converter channels clocked by a shared
-sample clock distributed from an on-chip clock
-network~\cite{AMD_PG269}.
+The ZU48DR integrates four \ac{rf}-\ac{adc} tiles and four
+\ac{rf}-\ac{dac} tiles, each containing two converter channels
+clocked by a shared sample clock~\cite{AMD_PG269}.
 
 \paragraph{RF-ADC:}
-The ZU48DR integrates four \ac{rf}-\ac{adc} tiles
-(tiles 224--227), each containing two converter channels.
-Of these, two tiles are routed to board-accessible
-\ac{sma} connectors: Tile~226 provides Block~1
-(RF~ADC~A) and Block~0 (RF~ADC~B), and Tile~224
-provides Block~1 (RF~ADC~C) and Block~0 (RF~ADC~D),
-yielding four accessible
-14-bit \ac{rf}-\ac{adc} channels capable of sampling
-at up to 5\,\ac{gsps} with an analog input bandwidth
-extending to approximately 6\,GHz~\cite{Kovacs2024,AMD_PG269}.
-Tiles~225 and~227 are present on the die but are not
-connected to any board-level \ac{rf} interface.
-Each \ac{rf}-\ac{adc} channel incorporates a
-programmable \ac{ddc} block that performs digital
-downconversion from the \ac{rf} sample stream to
-a complex baseband \ac{iq} signal at a decimated
-output rate compatible with the \ac{pl} fabric clock
-domain~\cite{Javaid2022,AMD_PG269}.
-The \ac{ddc} consists of a \ac{nco}-driven complex
-mixer followed by a configurable decimation filter
-chain; the \ac{nco} frequency is programmable over
-a range of 0 to approximately 4915\,MHz on the
-RFSoC~4x2 platform, enabling direct digital tuning
-to any channel within the \ac{rf} input
-bandwidth~\cite{Kovacs2024}.
-The decimated \ac{iq} output is presented to the
-\ac{pl} fabric through a 32-bit \ac{axi}4-Stream
-interface at the fabric clock rate, carrying one
-complex sample per transfer as a packed
-16-bit I and 16-bit Q integer pair~\cite{AMD_PG269}.
+Of the eight \ac{rf}-\ac{adc} channels, four are routed to
+board-accessible \ac{sma} connectors on the RFSoC~4x2
+board~\cite{Kovacs2024}.
+Each accessible channel is a 14-bit converter capable of sampling
+at up to 5\,\ac{gsps}, with an integrated \ac{ddc} block that
+downconverts the \ac{rf} sample stream to a complex \ac{iq} output
+presented to the \ac{pl} as a 32-bit \ac{axi}4-Stream (16-bit I,
+16-bit Q) at the fabric clock rate~\cite{AMD_PG269}.
 
 \paragraph{RF-DAC:}
-The ZU48DR integrates four \ac{rf}-\ac{dac} tiles
-(tiles 228--231), each containing two converter channels.
-Of these, two blocks are routed to board-accessible
-\ac{sma} connectors: Tile~230 Block~0 (RF~DAC~A) and
-Tile~228 Block~0 (RF~DAC~B), yielding two accessible
-14-bit \ac{rf}-\ac{dac} channels capable of operating
-at up to 9.85\,\ac{gsps}~\cite{Kovacs2024}.
-Tile~228 Block~1, Tiles~229, 231, and Tile~230 Block~1
-are present on the die but are not connected to any
-board-level \ac{rf} interface.
-Each \ac{rf}-\ac{dac} channel incorporates a
-programmable \ac{duc} block that performs digital
-upconversion from a complex baseband \ac{iq} input
-to the \ac{rf} sample rate, complementing the \ac{ddc}
-path of the \ac{rf}-\ac{adc}~\cite{AMD_PG269}.
-The \ac{pl} fabric delivers baseband \ac{iq} samples
-to the \ac{dac} through a 32-bit \ac{axi}4-Stream
-interface, packing the in-phase and quadrature
-components as 16-bit signed integers per transfer word,
-and the \ac{duc} interpolates and upconverts
-the sample stream before it is applied to the
-\ac{dac} core~\cite{AMD_PG269}.
+Of the eight \ac{rf}-\ac{dac} channels, two are routed to
+board-accessible \ac{sma} connectors~\cite{Kovacs2024}.
+Each accessible channel is a 14-bit converter operating at up to
+9.85\,\ac{gsps}, with an integrated \ac{duc} that accepts a
+32-bit \ac{axi}4-Stream from the \ac{pl} and upconverts to the
+\ac{rf} sample rate~\cite{AMD_PG269}.
 
 \paragraph{Latency Advantage:}
-The elimination of the external data converter
-interface is significant for latency-sensitive
-applications.
-Javaid et al.\ measured the loopback latency of a
-first-generation Zynq~UltraScale+ \ac{rfsoc}
-\ac{rfdc} operating at 4\,\ac{gsps} and found
-best-case hardware latencies of 108\,ns for real
-signal processing and 246\,ns for complex \ac{iq}
-processing at a 250\,MHz stream clock~\cite{Javaid2022}.
-These values represent an 80 to 90 per cent reduction
-in latency compared to a conventional discrete converter
-solution using the JESD204 serial interface, which
-incurs best-case latencies on the order of
-1.66\,$\mu$s~\cite{Javaid2022}.
-The latency advantage arises from the elimination of
-the multi-clock-cycle buffering required by the
-JESD204 framing and lane alignment
-protocol~\cite{Javaid2022}.
-
-The \ac{rfdc} parameters used in this work are
-summarized in Table~\ref{tab:rfdc_params}.
-
-\begin{table}[htbp]
-  \caption{ZU48DR \ac{rf} data converter parameters
-           (RFSoC~4x2 board)~\cite{Kovacs2024,AMD_PG269}.}
-  \label{tab:rfdc_params}
-  \centering
-  \begin{tabular}{p{4.2cm}p{4.8cm}p{4.8cm}}
-    \hline
-    Parameter & RF-ADC & RF-DAC \\
-    \hline
-    Channels (accessible)      & 4         & 2 \\[3pt]
-    Resolution                 & 14 bits   & 14 bits \\[3pt]
-    Maximum sample rate        & 5\,\ac{gsps}  & 9.85\,\ac{gsps} \\[3pt]
-    RF bandwidth               & $\approx$6\,GHz & $\approx$6\,GHz \\[3pt]
-    Digital conversion block   & \ac{ddc} (decimation)
-                               & \ac{duc} (interpolation) \\[3pt]
-    \ac{nco} tuning range     & 0--4915\,MHz & 0--4915\,MHz \\[3pt]
-    \ac{pl} interface         & \ac{axi}4-Stream, 32-bit
-                                 (16-bit I $+$ 16-bit Q)
-                               & \ac{axi}4-Stream, 32-bit
-                                 (16-bit I $+$ 16-bit Q) \\
-    \hline
-  \end{tabular}
-\end{table}
-
+Monolithic integration of the converters eliminates the external
+serial interface required in discrete converter architectures.
+Javaid et al.\ measured loopback latencies of 108\,ns (real) and
+246\,ns (complex \ac{iq}) on a first-generation \ac{rfsoc} at
+250\,MHz stream clock, compared to approximately 1.66\,$\mu$s for
+an equivalent JESD204-based solution — an 80--90\,\% reduction
+attributable to the elimination of JESD204 lane alignment
+buffering~\cite{Javaid2022}.
 
 % [ALT: Diagram mapping all sixteen RFDC converter blocks (eight ADC blocks
 %  across four ADC tiles, eight DAC blocks across four DAC tiles) to their
@@ -859,134 +447,67 @@ summarized in Table~\ref{tab:rfdc_params}.
   % TODO: Replace placeholder path with final figure file before submission.
   % Suggested filename: figures/ch2/ch2_rfdc_tile_map.pdf
   \includegraphics[width=0.85\textwidth]{figures/ch2/ch2_rfdc_tile_map}
-  \caption{RFDC tile map of the AMD Zynq~UltraScale+ ZU48DR device
-           on the RFSoC~4x2 board, showing all \ac{rf}-\ac{adc} and
-           \ac{rf}-\ac{dac} tiles, their block indices, board-assigned
-           labels, and \ac{sma} routing
-           status~\cite{Kovacs2024,AMD_PG269}.}
+  \caption{RFDC tile map of the AMD Zynq~UltraScale+ ZU48DR on the
+           RFSoC~4x2 board, showing all \ac{rf}-\ac{adc} and
+           \ac{rf}-\ac{dac} tiles with board labels and \ac{sma}
+           routing status~\cite{Kovacs2024,AMD_PG269}.}
   \label{fig:rfdc_tile_map}
 \end{figure}
 
-Figure~\ref{fig:rfdc_tile_map} illustrates the complete
-tile and block layout of the ZU48DR \ac{rfdc}.
-Table~\ref{tab:rfdc_tile_map} enumerates all sixteen
-converter blocks on the ZU48DR, their tile and block
-indices, board-assigned labels, and routing status
-on the RFSoC~4x2 board.
+The \ac{rfdc} parameters configured in this work are summarized
+in Table~\ref{tab:rfdc_params}.
 
 \begin{table}[htbp]
-  \caption{RFDC tile and block map for the AMD Zynq~UltraScale+
-           ZU48DR on the RFSoC~4x2 board~\cite{Kovacs2024,AMD_PG269}.}
-  \label{tab:rfdc_tile_map}
+  \caption{ZU48DR \ac{rf} data converter parameters used in this
+           work~\cite{Kovacs2024,AMD_PG269}.}
+  \label{tab:rfdc_params}
   \centering
-  \begin{tabular}{ccccl}
+  \begin{tabular}{p{4.2cm}p{4.8cm}p{4.8cm}}
     \hline
-    Type & Tile & Block & Board Label & Routed to SMA \\
+    Parameter & RF-ADC & RF-DAC \\
     \hline
-    RF-DAC & 228 & 0 & RF DAC B & Yes \\[2pt]
-    RF-DAC & 228 & 1 & ---       & No  \\[2pt]
-    RF-DAC & 229 & 0 & ---       & No  \\[2pt]
-    RF-DAC & 229 & 1 & ---       & No  \\[2pt]
-    RF-DAC & 230 & 0 & RF DAC A & Yes \\[2pt]
-    RF-DAC & 230 & 1 & ---       & No  \\[2pt]
-    RF-DAC & 231 & 0 & ---       & No  \\[2pt]
-    RF-DAC & 231 & 1 & ---       & No  \\[2pt]
-    RF-ADC & 224 & 0 & RF ADC D & Yes \\[2pt]
-    RF-ADC & 224 & 1 & RF ADC C & Yes \\[2pt]
-    RF-ADC & 225 & 0 & ---       & No  \\[2pt]
-    RF-ADC & 225 & 1 & ---       & No  \\[2pt]
-    RF-ADC & 226 & 0 & RF ADC B & Yes \\[2pt]
-    RF-ADC & 226 & 1 & RF ADC A & Yes \\[2pt]
-    RF-ADC & 227 & 0 & ---       & No  \\[2pt]
-    RF-ADC & 227 & 1 & ---       & No  \\
+    Channels (accessible)   & 4             & 2 \\[3pt]
+    Resolution              & 14 bits       & 14 bits \\[3pt]
+    Maximum sample rate     & 5\,\ac{gsps}  & 9.85\,\ac{gsps} \\[3pt]
+    \ac{nco} tuning range  & 0--4915\,MHz  & 0--4915\,MHz \\[3pt]
+    \ac{pl} interface      & \ac{axi}4-Stream, 32-bit
+                              (16-bit I $+$ 16-bit Q)
+                            & \ac{axi}4-Stream, 32-bit
+                              (16-bit I $+$ 16-bit Q) \\
     \hline
   \end{tabular}
 \end{table}
 
-% ------------------------------------------------------------
-\subsection{Hardened SD-FEC Cores}
-\label{subsec:sdfec_background}
-
-The ZU48DR integrates eight hardened
-\ac{sdfec} cores as fixed-function silicon blocks
-within the device~\cite{AMD_PG256}.
-Unlike \ac{pl}-based \ac{fec} implementations, the
-hardened \ac{sdfec} cores do not consume any
-programmable logic resources; they operate as
-dedicated accelerator blocks connected to the \ac{pl}
-fabric through \ac{axi}4-Stream data interfaces and
-an \ac{axi}4-Lite control interface~\cite{AMD_PG256}.
-
-Each \ac{sdfec} core supports both \ac{ldpc} and
-Turbo decoding algorithms, with code parameters
-configurable at runtime through the control
-interface~\cite{AMD_PG256}.
-The \ac{ldpc} mode implements belief-propagation
-decoding with programmable iteration count and
-early termination, making it suitable for
-high-throughput forward error correction in
-broadband communications
-applications~\cite{AMD_PG256}.
-
-In the J.83B processing chain implemented in this
-work, the \ac{sdfec} cores are used to implement
-the \ac{ldpc} encoding and decoding stages of
-the ANSpect O-EMA platform.
-Further implementation detail is deferred to
-Chapter~4 in accordance with the project
-confidentiality scope.
 
 % ------------------------------------------------------------
 \subsection{PS-PL Integration Model}
 \label{subsec:ps_pl_integration}
 
-The \ac{ps} and \ac{pl} subsystems of the ZU48DR
-are connected by a set of \ac{axi} interconnect ports
-that form the data and control paths between the
-\ac{arm} processing system and the reconfigurable
-logic fabric~\cite{Boppana2015,AMD_UG1085}.
+The \ac{ps} and \ac{pl} subsystems communicate through a set of
+\ac{axi} interconnect ports that form the data and control paths
+between the \ac{arm} processor and the reconfigurable
+fabric~\cite{Boppana2015,AMD_UG1085}.
 
 \paragraph{High-Performance Ports:}
-The \ac{hp} \ac{axi} slave ports connect the
-\ac{pl} fabric to the \ac{ps} memory subsystem
-at high bandwidth, supporting sustained data rates
-of up to 85\,Gbps per port for read-plus-write
-traffic~\cite{Boppana2015}.
-These ports are used by \ac{dma} engines in the
-\ac{pl} to transfer data buffers between the
-\ac{pl} processing pipeline and the \ac{ddr}4
-system memory managed by the \ac{apu}~\cite{AMD_UG1085}.
-In the J.83B implementation, the MM2S channel of
-the \ac{axi} \ac{dma} delivers \ac{mpegts} packet
-data from the \ac{ps} memory to the transmit
-processing chain through the \ac{hp} ports.
+The \ac{hp} \ac{axi} slave ports connect the \ac{pl} to the \ac{ps}
+memory subsystem at high bandwidth, supporting up to 85\,Gbps per
+port for combined read-plus-write traffic~\cite{Boppana2015}.
+These ports are used by \ac{dma} engines in the \ac{pl} to transfer
+data buffers between the processing pipeline and \ac{ddr}4
+system memory~\cite{AMD_UG1085}.
 
 \paragraph{General-Purpose Ports:}
-The general-purpose \ac{axi} master ports provide
-the \ac{ps} with memory-mapped register access to
-\ac{ip} cores in the \ac{pl}, supporting control
-and status register reads and writes at lower
-bandwidth but without occupying the
-\ac{hp} data path~\cite{AMD_UG1085}.
-In this work, the \ac{axi}4-Lite register file
-of each \ac{rtl} module is connected to the \ac{ps}
-through a general-purpose port, allowing runtime
-configuration of processing parameters from the
-PYNQ Python environment~\cite{Kovacs2024}.
+The general-purpose \ac{axi} master ports provide the \ac{ps} with
+memory-mapped register access to \ac{ip} cores in the \ac{pl} for
+control and status register operations~\cite{AMD_UG1085}.
 
 \paragraph{Interrupt Routing:}
-The ZU48DR provides a configurable interrupt
-routing fabric that delivers \ac{pl}-generated
-interrupt signals to the \ac{ps} \ac{apu} or
-\ac{rpu} interrupt controllers~\cite{AMD_UG1085}.
-\ac{dma} completion interrupts from the \ac{pl}
-are routed to the Linux interrupt controller on
-the \ac{apu}, enabling the PYNQ \ac{dma} driver
+\ac{pl}-generated interrupt signals are routed to the \ac{ps}
+\ac{apu} interrupt controller, enabling the PYNQ \ac{dma} driver
 to block on transfer completion without polling~\cite{Kovacs2024}.
 
-The PS-PL interface parameters relevant to this
-implementation are summarized in
-Table~\ref{tab:pspl_ports}.
+Table~\ref{tab:pspl_ports} summarizes the \ac{ps}--\ac{pl}
+interface ports used in this work.
 
 \begin{table}[htbp]
   \caption{ZU48DR \ac{ps}-\ac{pl} interface summary~\cite{AMD_UG1085,Boppana2015}.}
@@ -994,15 +515,15 @@ Table~\ref{tab:pspl_ports}.
   \centering
   \begin{tabular}{llll}
     \hline
-  Port Type & Protocol & Direction & Use in This Work \\
-  \hline
-  \ac{hp} \ac{axi} slave & \ac{axi}4 Full  & PL $\to$ PS
-    & \ac{dma} data transfers (MM2S) \\[3pt]
-  GP \ac{axi} master      & \ac{axi}4-Lite  & PS $\to$ PL
-    & Register R/W, runtime config \\[3pt]
-  Interrupt                & IRQ              & PL $\to$ PS
-    & \ac{dma} completion signal \\
-  \hline
+    Port Type & Protocol & Direction & Use in This Work \\
+    \hline
+    \ac{hp} \ac{axi} slave & \ac{axi}4 Full  & PL $\to$ PS
+      & \ac{dma} data transfers \\[3pt]
+    GP \ac{axi} master     & \ac{axi}4-Lite  & PS $\to$ PL
+      & Register R/W, runtime config \\[3pt]
+    Interrupt              & IRQ              & PL $\to$ PS
+      & \ac{dma} completion signal \\
+    \hline
   \end{tabular}
 \end{table}
 
@@ -1242,7 +763,7 @@ low-noise reference.
 
 \paragraph{PL Fabric Clock Domain:}
 The \ac{pl} fabric operates in a separate clock domain driven by
-\texttt{pl\_clk0}, a 250\,MHz clock derived from the \ac{ps}
+\texttt{pl\_clk}, a 250\,MHz clock derived from the \ac{ps}
 clock wizard~\cite{AMD_UG1085}.
 This clock drives all \ac{axi}4-Stream pipeline modules, the
 \ac{axi} \ac{dma} engines, and the \ac{sdma} interfaces
