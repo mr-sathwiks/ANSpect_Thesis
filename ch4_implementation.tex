@@ -4929,16 +4929,70 @@ The \ac{rfdc} configuration is frozen on the basis of this result.
 % ------------------------------------------------------------
 \section{RF TX Front-End}
 \label{sec:rf_frontend}
-% [NDA-IMPL] — BLOCKED
-% TODO: Section intro requires NDA CLEAR: IMPL [4.6] + handoff
 
+The \ac{rf} transmit front-end converts the differential analog
+output of the \ac{rfdc} \ac{dac} tile to a single-ended 50\,$\Omega$
+signal on a board-accessible \ac{sma} connector for delivery to
+external test equipment or a cable receiver.
+The front-end consists entirely of passive board-level components
+and consumes no \ac{fpga} resources~\cite{RealDigital_A6}.
+
+% ------------------------------------------------------------
 \subsection{TX Path}
 \label{subsec:rf_tx}
-% [NDA-IMPL] — BLOCKED (RF-01)
-% TODO: Requires NDA CLEAR: IMPL [4.6.1] + handoff
-%   - DAC balun + SMA TX path
-% NOTE: RX Path (RF-02) out of scope — removed 26-Oct-2026
-\clearpage  
+
+The transmit path is a fixed passive signal chain from
+\ac{rfdac} \texttt{vout00} to the board \ac{sma} connector;
+Table~\ref{tab:rf01_spec} lists the component parameters.
+
+\begin{table}[htbp]
+  \caption{RF-01 DAC balun and SMA TX path component
+           specification~\cite{RealDigital_A6}.}
+  \label{tab:rf01_spec}
+  \centering
+  \small
+  \begin{tabular}{p{4.5cm}p{4.0cm}p{6.0cm}}
+    \hline
+    Parameter & Value & Notes \\
+    \hline
+    Balun component
+      & MACOM MABA-011118
+      & Transformer balun; passive \\[3pt]
+    Frequency range
+      & 10\,MHz -- 10\,GHz
+      & Operating center (177\,MHz) within spec \\[3pt]
+    Conversion
+      & Differential $\to$ single-ended
+      & \ac{rfdac} \texttt{vout00} $\to$ 50\,$\Omega$ \ac{sma} \\[3pt]
+    \ac{sma} output impedance
+      & 50\,$\Omega$
+      & \\[3pt]
+    Coaxial cable impedance
+      & 75\,$\Omega$
+      & External 50\,$\Omega$~$\to$~75\,$\Omega$ matching pad
+        required for cable receiver connection \\[3pt]
+    Signal chain
+      & Passive only
+      & DC blocking caps $+$ balun; no active components \\[3pt]
+    \ac{rf} shield
+      & 10\,mm~$\times$~14\,mm
+      & Must remain fitted during operation \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The \ac{sma} output operates at the 50\,$\Omega$ impedance standard
+of \ac{rf} test equipment, whereas cable television receivers and
+\ac{hfc} infrastructure operate at 75\,$\Omega$~\cite{SCTE07}.
+An external 50\,$\Omega$~$\to$~75\,$\Omega$ matching pad is
+therefore required for all connections to a cable receiver and must
+be supplied externally.
+The transmit path was confirmed in the \ac{rfdc} isolation test: 
+with the matching pad installed, the HDHomeRun
+receiver reported \ac{qam256} signal lock at
+177\,MHz~\cite{RealDigital_A6}.
+
+\clearpage
 % ------------------------------------------------------------
 \section{Clocking Subsystem}
 \label{sec:clocking}
