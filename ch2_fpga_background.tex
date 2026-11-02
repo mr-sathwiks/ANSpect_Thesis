@@ -2,58 +2,54 @@
 % ch2_fpga_background.tex
 % ANSpect O-EMA · MS Thesis · UTD Electrical Engineering
 % \input target — no \documentclass or \begin{document}
-% STATUS: SKELETON — run 'expand CH-2.X' to flesh out
+% STATUS: SKELETON v2.0 — restructured 02-Nov-2026 per professor feedback
 % v1.0  01-Sep-2026  Split from chapters.tex
-% ============================================================
-
-% ============================================================
-% CHAPTER 2 — FPGA AND RFSoC BACKGROUND
-% STATUS: OPEN
+% v2.0  02-Nov-2026  §2.1 renamed; §2.2 new (absorbed §2.6);
+%                    §2.3 new preamble + renumbered from §2.2;
+%                    §2.4–§2.7 renumbered from §2.3–§2.7;
+%                    §2.6 Vivado deleted (absorbed into §2.2)
 % ============================================================
 
 \chapter{FPGA and RFSoC Background}
 \label{ch:fpga_background}
-% TODO:
-%   - Chapter intro paragraph — scope of background coverage
-%   - Cite foundational FPGA/Zynq references \cite{NEEDED} % [CITE NEEDED]
+
+This chapter provides the technical background necessary to
+understand the hardware platform and design methodology used
+in this work.
+Section~\ref{sec:what_is_fpga} introduces \ac{fpga} architecture
+and internal resources.
+Section~\ref{sec:fpga_programming} describes the \ac{hdl}-to-bitstream
+design flow and its realization in the Vivado toolchain.
+Section~\ref{sec:rfsoc4x2} covers the RFSoC~4x2 platform provided
+for this work.
+Sections~\ref{sec:axi} through~\ref{sec:matlab_rtl} describe the
+\ac{axi} interconnect, RF clocking architecture, PYNQ framework,
+and the MATLAB-to-RTL methodology decision.
+
+
+% ============================================================
+% §2.1  What is an FPGA
+% STATUS: SKELETON — new section
+% ============================================================
+
+\section{What is an FPGA}
+\label{sec:what_is_fpga}
+
+\acp{fpga} are reconfigurable integrated circuits whose logic and
+interconnect are defined by a configuration bitstream loaded at
+runtime~\cite{Kuon2007}.
+Unlike \acp{asic}, which are fixed at fabrication, or
+general-purpose processors, which execute sequential software,
+\acp{fpga} deliver parallel hardware execution while remaining
+reprogrammable~\cite{Kuon2007}.
+Modern devices have evolved into heterogeneous \acp{soc} integrating
+reconfigurable fabric, hardened processor cores, and, in the latest
+generations, directly integrated \ac{rf} data converters on a single
+die~\cite{Boppana2015}.
 
 
 % ------------------------------------------------------------
-\section{FPGA Architecture Overview}
-\label{sec:fpga_overview}
-
-\acp{fpga} are reconfigurable integrated circuits whose
-internal logic connections and functional behavior are defined
-by a configuration bitstream loaded into the device at
-runtime rather than fixed during fabrication~\cite{Kuon2007}.
-This programmability distinguishes \acp{fpga} from
-\acp{asic}, which are fabricated for a single immutable
-function, and from general-purpose processors, which execute
-sequential instruction streams in software.
-The \ac{fpga} occupies a distinct position in the
-design space between these two extremes: it offers
-near-hardware throughput through massively parallel datapath
-execution while retaining the ability to reprogram the device
-to modify or extend functionality without incurring a new
-fabrication cycle~\cite{Kuon2007}.
-
-Modern \acp{fpga} have evolved from simple programmable logic
-devices of the mid-1980s into heterogeneous system-on-chip
-platforms that integrate reconfigurable fabric, hardened
-processing cores, high-speed memory, and, in the most recent
-generations, directly integrated radio-frequency data
-converters on a single die~\cite{Boppana2015}.
-The Xilinx Zynq~UltraScale+ family, and specifically the
-\ac{rfsoc}~4x2 board used in this work, represents this convergence~\cite{Boppana2015} of programmable logic with an \ac{arm} processing
-system and monolithically integrated \ac{rf} data converters.
-The sections that follow describe the fundamental building
-blocks of the UltraScale+ programmable logic fabric and
-establish the rationale for selecting an \ac{fpga}-based
-platform for implementing the J.83B digital signal processing
-chain.
-
-% ------------------------------------------------------------
-\subsection{Configurable Logic: LUTs, FFs, DSP Slices, and BRAM}
+\subsection{Internal Architecture}
 \label{subsec:fpga_resources}
 
 The programmable logic of a Zynq~UltraScale+ \ac{fpga} is
@@ -83,6 +79,22 @@ trellis encoder and the convolutional interleaver commutator,
 the \ac{pn} sequence comparison logic of the randomizer, and
 the 256-QAM symbol look-up table that maps 8-bit C-words to
 complex constellation coordinates.
+
+\paragraph{Programmable Interconnect:}
+The logic resources of an \ac{fpga} are connected through a
+programmable routing fabric composed of switch boxes, connection
+boxes, and routing channels~\cite{AMD_UG574}.
+A switch box sits at the intersection of horizontal and vertical
+routing channels and contains configurable pass transistors that
+determine which channel segments are joined, routing signals between
+non-adjacent \acp{clb} across the device~\cite{AMD_UG574}.
+Connection boxes link the input and output pins of each \ac{clb} to
+the adjacent routing channels, providing the interface between logic
+and interconnect~\cite{AMD_UG574}.
+In practice, routing delay through these switch boxes dominates the
+critical-path timing of most \ac{fpga} designs, making interconnect
+utilization and placement a primary constraint during timing
+closure~\cite{AMD_UG574}.
 
 \paragraph{Flip-Flops:}
 Each \ac{lut} primitive in the UltraScale+ \ac{clb} is paired
@@ -135,7 +147,8 @@ pipeline-regulated access timing is required~\cite{AMD_UG574}.
 In the J.83B implementation, \ac{bram} is used to implement
 the shift-register delay lines of the Forney convolutional
 interleaver, which requires $I\,(I-1)\,J = 16{,}256$ symbol
-positions of storage for the $I=128$, $J=1$ mode mandated by the standard~\cite{ITU_J83}, as well as packet buffers in the \ac{axi} DMA
+positions of storage for the $I=128$, $J=1$ mode mandated by 
+the standard~\cite{ITU_J83}, as well as packet buffers in the \ac{axi} DMA
 data path between the processing system and the programmable
 logic.
 
@@ -158,6 +171,9 @@ and its primary role in this work.
     \ac{lut6} & 6-input programmable truth table~\cite{AMD_UG574}
                & Combinational logic: FSMs, QAM symbol look-up
                  table, control paths \\[4pt]
+    Switch Box & Configurable pass-transistor crossbar~\cite{AMD_UG574}
+               & Signal routing between \acp{clb}; dominant
+                 source of critical-path delay \\[4pt]
     \ac{ff}   & D flip-flop, clocked register~\cite{AMD_UG574}
                & Pipeline staging; enables 250\,MHz \ac{pl}
                  clock operation \\[4pt]
@@ -275,13 +291,279 @@ chain implemented in this thesis.
 
 %\clearpage
 
+% ============================================================
+% §2.2  FPGA Programming and Design Flow
+% STATUS: SKELETON — new section (absorbs former §2.6)
+% ============================================================
+
+\section{FPGA Programming and Design Flow}
+\label{sec:fpga_programming}
+
+Hardware functionality is described in an \ac{hdl} such as
+SystemVerilog or \ac{vhdl} and compiled into a device-specific
+bitstream through a sequence of synthesis, place-and-route, and
+bitstream generation steps~\cite{AMD_UG892}.
+The bitstream is then loaded into the \ac{fpga} to configure its
+logic and interconnect resources.
+Section~\ref{subsec:hdl_to_bitstream} describes this flow
+conceptually; Sections~\ref{subsec:ip_integrator}
+through~\ref{subsec:vivado_flow} describe its realization in the
+AMD Vivado toolchain used in this work.
+
+
 % ------------------------------------------------------------
-\section{Zynq UltraScale+ RFSoC 4x2}
+\subsection{HDL-to-Bitstream Flow}
+\label{subsec:hdl_to_bitstream}
+
+Hardware for an \ac{fpga} is described in an \ac{hdl} —
+SystemVerilog, \ac{vhdl}, or Verilog — or generated from a
+higher-level tool such as MATLAB HDL Coder or
+CyberWorkBench~\cite{AMD_UG892}.
+Figure~\ref{fig:hdl_bitstream_flow} shows the compilation
+stages from \ac{hdl} source to a configured device.
+
+% [ALT: HDL-to-Bitstream flow diagram showing five stages: HDL Source
+%  (SystemVerilog / VHDL / Verilog; MATLAB HDL Coder / CyberWorkBench),
+%  Synthesis (Vivado / Design Compiler / Quartus), Place and Route
+%  (Vivado Implementation / Quartus PnR), Bitstream Generation
+%  (Vivado / Quartus), and Device Configuration (JTAG / Flash / PYNQ .bit),
+%  with a feedback arrow from the timing and resource constraints check
+%  back to HDL Source labeled "No, revise RTL / constraints"]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/ch2/ch2_hdl_bitstream_flow}
+  \caption{\ac{hdl}-to-bitstream compilation flow, showing principal
+           stages and representative industry tools at each
+           stage~\cite{AMD_UG892}.}
+  \label{fig:hdl_bitstream_flow}
+\end{figure}
+
+\paragraph{Synthesis:}
+The synthesizer processes the \ac{hdl} source in two steps.
+First, elaboration converts the \ac{hdl} into a generic
+netlist of logic primitives — \acp{ff}, logic gates,
+multiplexers, adders, and multipliers~\cite{AMD_UG892}.
+Second, technology mapping converts these generic primitives
+into the device-specific resources available on the target
+\ac{fpga} — \acp{lut6}, \texttt{FDRE} registers, and
+DSP48E2 slices — producing a mapped netlist expressed
+entirely in terms of UltraScale+ primitives~\cite{AMD_UG574,AMD_UG579}.
+
+\paragraph{Implementation:}
+Implementation accepts the mapped netlist and proceeds through
+three stages~\cite{AMD_UG892}.
+Logic optimization (\texttt{opt\_design}) refines the mapped
+netlist before placement.
+The placer then assigns each primitive to a physical site on
+the device die~\cite{AMD_UG574}.
+The router determines which switch boxes and routing channels
+connect the placed primitives, configuring the programmable
+interconnect to realize the required signal paths~\cite{AMD_UG574}.
+Throughout placement and routing, the timing analyzer checks
+whether all paths meet the setup and hold constraints at the
+target clock frequency; if constraints are not met, the
+\ac{rtl} or implementation directives are revised and the
+flow repeats~\cite{AMD_UG892}.
+
+\paragraph{Bitstream Generation and Configuration:}
+Once timing closure is achieved, the bitstream generator
+produces the binary \texttt{.bit} file that encodes the
+complete device configuration~\cite{AMD_UG892}.
+The bitstream is loaded into the \ac{fpga} through \ac{jtag},
+non-volatile flash, or, in this work, the PYNQ overlay
+loader~\cite{PYNQ_DOC}.
+The specific Vivado realization of this flow for the J.83B
+transmit chain is described in
+Sections~\ref{subsec:ip_integrator}--\ref{subsec:vivado_flow}.
+
+
+% ------------------------------------------------------------
+\subsection{Vivado IP Integrator Block Design}
+\label{subsec:ip_integrator}
+
+The Vivado \ac{ip} Integrator is a graphical design canvas
+in which \ac{ip} cores are instantiated as blocks and
+connected by drawing wires between their
+ports~\cite{AMD_UG994}.
+The resulting block design is a self-contained description
+of the \ac{pl} hardware that captures the \ac{axi}
+interconnect topology, the clock and reset routing, and the
+\ac{ps}--\ac{pl} port bindings in a single
+artifact~\cite{AMD_UG994}.
+
+\paragraph{Zynq PS IP:}
+The \ac{ps} subsystem of the ZU48DR is represented in the
+block design by the Zynq UltraScale+ \ac{mpsoc} \ac{ip}
+core, which generates the \ac{ps} hardware
+configuration~\cite{AMD_UG1085}.
+A graphical configuration dialog controls which \ac{ps}
+peripherals are enabled, the \ac{ddr}4 memory interface
+parameters, the \ac{pl} clock outputs, and the mapping
+of \ac{hp} and general-purpose \ac{axi} ports to the
+\ac{pl} interconnect~\cite{AMD_UG1085}.
+Exporting the block design from this \ac{ip} core produces
+the hardware platform file consumed by downstream Vitis
+or PYNQ flows~\cite{PYNQ_DOC}.
+
+\paragraph{AXI SmartConnect:}
+The AMD SmartConnect \ac{ip} core manages the \ac{axi}
+interconnect between the \ac{ps} master ports and the
+slave register interfaces of the \ac{pl} \ac{ip}
+cores~\cite{AMD_UG994}.
+It performs clock crossing, data-width conversion, and
+arbitration automatically, allowing \ac{ip} cores
+operating in different \ac{axi} configurations to be
+connected without manual bridging logic~\cite{AMD_UG994}.
+
+\paragraph{Address Editor:}
+The Vivado address editor assigns each \ac{axi}4-Lite
+slave in the block design a unique base address within
+the \ac{ps} memory map~\cite{AMD_UG1085}.
+These addresses are exported to the \texttt{.hwh} file
+at implementation, where the PYNQ overlay parser reads
+them to construct the Python \ac{ip} dictionary described
+in Section~\ref{subsec:pynq_overlay}~\cite{PYNQ_DOC}.
+Every custom \ac{rtl} module that exposes an \ac{axi}4-Lite
+register file receives a unique base address in this editor,
+making its registers directly addressable by the \ac{arm}
+Cortex-A53~\cite{AMD_UG1085}.
+
+
+% ------------------------------------------------------------
+\subsection{IP Packaging: Custom RTL Modules}
+\label{subsec:ip_packaging}
+
+Before a custom \ac{rtl} module can be instantiated in
+the Vivado \ac{ip} Integrator block design, it must be
+packaged as a Vivado \ac{ip} core using the Vivado
+\ac{ip} Packager~\cite{AMD_UG994}.
+The packager wraps a SystemVerilog \ac{rtl} source
+hierarchy in a standardized IP-XACT descriptor
+that the block design canvas can discover, instantiate,
+and connect~\cite{AMD_UG994}.
+
+\paragraph{AXI Port Inference:}
+The Vivado \ac{ip} Packager infers \ac{axi} interface
+types from the port naming conventions of the \ac{rtl}
+module~\cite{AMD_UG994}. 
+Ports whose names follow the \ac{axi}4-Stream prefix
+convention (\texttt{s\_axis\_*} for slave,
+\texttt{m\_axis\_*} for master) are automatically
+grouped into typed \ac{axi}4-Stream interface objects
+that the block design canvas can connect with a single
+wire, rather than requiring individual port-to-port
+connections~\cite{AMD_UG994}.
+Similarly, \ac{axi}4-Lite register file ports are
+inferred from the \texttt{s\_axi\_*} naming
+convention~\cite{AMD_UG994}.
+
+\paragraph{component.xml:}
+The output of the packaging step is a
+\texttt{component.xml} file that defines the \ac{ip}
+core interface, its port groupings, bus interface
+protocols, and any user-visible parameters exposed
+through the block design configuration
+dialog~\cite{AMD_UG994}.
+The packaged core is stored in the Vivado \ac{ip}
+repository and is available for instantiation in any
+block design that references that repository
+path~\cite{AMD_UG994}.
+The packaging approach therefore supports a modular
+design methodology in which each \ac{rtl} stage of
+the J.83B processing chain is developed, verified,
+and packaged independently before integration into
+the top-level block design~\cite{Kovacs2024}.
+
+
+% ------------------------------------------------------------
+\subsection{Synthesis, Implementation, and Bitstream Generation}
+\label{subsec:vivado_flow}
+
+Following block design completion, the Vivado flow
+proceeds through three sequential compilation stages
+that transform the \ac{rtl} and block design sources
+into a device-specific binary configuration:
+synthesis, implementation, and bitstream
+generation~\cite{AMD_UG892}.
+
+\paragraph{Synthesis:}
+Synthesis translates the \ac{rtl} source files and
+the block design wrapper into a technology-mapped
+netlist expressed in terms of UltraScale+ primitives
+such as \ac{lut6}, \ac{ff}, DSP48E2, and
+\ac{bram}~\cite{AMD_UG892}.
+The synthesizer performs combinational optimization,
+register retiming, and resource inference, converting
+inferred arithmetic operations into DSP48E2 instances
+and inferred memories into \ac{bram} or distributed
+\ac{ram} primitives as appropriate~\cite{AMD_UG892}.
+The synthesis report lists resource utilization
+estimates and identifies any \ac{rtl} constructs
+that could not be mapped to available
+primitives~\cite{AMD_UG892}.
+
+\paragraph{Implementation:}
+Implementation places the synthesized netlist onto
+the physical sites of the ZU48DR die and routes the
+interconnect between placed
+primitives~\cite{AMD_UG892}. 
+The placer assigns each \ac{lut}, \ac{ff}, DSP48E2,
+and \ac{bram} instance to a specific site on the
+\ac{cl} fabric, subject to timing, power, and
+congestion constraints~\cite{AMD_UG892}. 
+The router then connects the placed instances through
+the UltraScale+ programmable interconnect, and the
+timing analyzer verifies that every combinational
+path in the design meets its setup and hold
+constraints at the target clock
+frequency~\cite{AMD_UG892}. 
+A design that fails timing closure must be modified
+through pipeline stage insertion, constraint
+relaxation, or \ac{rtl} restructuring and
+re-implemented until all paths meet their
+constraints~\cite{AMD_UG892}. 
+
+\paragraph{Bitstream Generation:}
+Once implementation achieves timing closure, the
+Vivado bitstream generator converts the placed and
+routed netlist into the binary \texttt{.bit} file
+that programs the UltraScale+ configuration
+memory~\cite{AMD_UG892}.
+Vivado simultaneously exports the hardware handoff
+(\texttt{.hwh}) file from the block design, which
+records the \ac{ip} address map and interface
+metadata used by the PYNQ overlay loader~\cite{PYNQ_DOC}.
+The \texttt{.bit} and \texttt{.hwh} files together
+constitute the complete \ac{pl} overlay deliverable
+of this thesis~\cite{PYNQ_DOC,Kovacs2024}.
+
+%\clearpage
+
+
+% ============================================================
+% §2.3  Platform: RFSoC 4x2
+% STATUS: PARTIAL — new preamble required; existing §2.2 content carries forward
+% ============================================================
+
+\section{Zynq UltraScale+ RFSoC~4x2}
 \label{sec:rfsoc4x2}
 
-The hardware platform used in this work is the RFSoC~4x2
-development board, produced by Real Digital in partnership
-with AMD~\cite{Kovacs2024}.
+Xilinx \ac{fpga} devices span a range of families targeting
+different performance and cost points: Artix for cost-sensitive
+applications, Kintex for mid-range performance, and Virtex for
+high-end designs requiring maximum logic density~\cite{Boppana2015}.
+The Zynq family extends this range by integrating an \ac{arm}
+processing system with the programmable logic fabric on a single
+die, and the \ac{rfsoc} tier further adds directly integrated
+\ac{rf} data converters, eliminating the external converter
+interfaces required in conventional multi-chip
+architectures~\cite{Boppana2015}.
+
+The \ac{rfsoc}~4x2 development board was provided by ANSpect
+as the target hardware platform for this work.
+
+The RFSoC~4x2 is a development board produced by Real Digital
+in partnership with AMD~\cite{Kovacs2024}.
 The board is built around the AMD Zynq~UltraScale+
 ZU48DR device, a third-generation member of the
 \ac{rfsoc} product family that monolithically integrates
@@ -413,7 +695,7 @@ stages are packaged as Vivado \ac{ip} cores with
 \ac{axi}4-Stream data interfaces and \ac{axi}4-Lite
 control interfaces, and are integrated into the
 block design as described in
-Section~\ref{sec:vivado_background}~\cite{Kovacs2024}.
+Section~\ref{subsec:ip_integrator}~\cite{Kovacs2024}.
 
 Table~\ref{tab:zu48dr_resources} lists the available logic
 resource counts for the XCZU48DR device as specified
@@ -719,7 +1001,13 @@ Table~\ref{tab:pspl_ports}.
 
 %\clearpage
 
-% ------------------------------------------------------------
+
+% ============================================================
+% §2.4  AXI Interconnect Ecosystem
+% STATUS: EXISTS — renumber only (was §2.3)
+% 🔒 FROZEN
+% ============================================================
+
 \section{AXI Interconnect Ecosystem}
 \label{sec:axi}
 
@@ -854,7 +1142,13 @@ existing memory buffers~\cite{AMD_PG021}.
 
 %\clearpage
 
-% ------------------------------------------------------------
+
+% ============================================================
+% §2.5  RF Clocking Architecture
+% STATUS: EXISTS — renumber only (was §2.4)
+% 🔒 FROZEN
+% ============================================================
+
 \section{RF Clocking Architecture}
 \label{sec:rf_clocking_background}
 
@@ -1094,14 +1388,13 @@ frequency arguments used in this implementation are
 deferred to Chapter~4.
 
 %\clearpage
+
 % ============================================================
-% §2.5  PYNQ Framework
-% STATUS: EXPANDED — 26-Sep-2026
-% Sources: PYNQ_DOC, Kovacs2024, AMD_PG021, RealDigital_A6
-%          AMD_UG1085
+% §2.6  PYNQ Framework
+% STATUS: EXISTS — renumber only (was §2.5)
+% 🔒 FROZEN
 % ============================================================
 
-% ------------------------------------------------------------
 \section{PYNQ Framework}
 \label{sec:pynq_background}
 
@@ -1267,190 +1560,14 @@ the flexibility of a high-level scripting environment
 for test and measurement workflows.
 
 %\clearpage
-% ------------------------------------------------------------
-\section{Vivado Design Flow}
-\label{sec:vivado_background}
 
-AMD Vivado\texttrademark{} design suite is the primary \ac{fpga}
-development environment for UltraScale+ devices and is the
-toolchain used in this work to integrate the J.83B
-\ac{rtl} modules, connect them to the \ac{ps}, and generate
-the bitstream that programs the ZU48DR \ac{pl}
-fabric~\cite{Kovacs2024,AMD_UG892}.
-Vivado supports a graphical block design environment in which
-\ac{ip} cores are instantiated and connected visually, a
-command-line \ac{tcl} scripting interface for reproducible
-design automation, and a synthesis and implementation engine
-that maps the integrated design onto the physical resources
-of the target device~\cite{AMD_UG892}.
-The output of the Vivado flow is a bitstream file
-(\texttt{.bit}) and a hardware handoff file (\texttt{.hwh})
-that together constitute the \ac{pl} overlay consumed by
-the PYNQ framework described in
-Section~\ref{sec:pynq_background}~\cite{PYNQ_DOC}.
-The three stages of the Vivado design flow relevant to this
-work are described in the sections that follow.
 
-% ------------------------------------------------------------
-\subsection{IP Integrator Block Design}
-\label{subsec:ip_integrator}
+% ============================================================
+% §2.7  MATLAB-to-RTL Workflow
+% STATUS: EXISTS — no change (was §2.7)
+% 🔒 FROZEN
+% ============================================================
 
-The Vivado \ac{ip} Integrator is a graphical design canvas
-in which \ac{ip} cores are instantiated as blocks and
-connected by drawing wires between their
-ports~\cite{AMD_UG994}.
-The resulting block design is a self-contained description
-of the \ac{pl} hardware that captures the \ac{axi}
-interconnect topology, the clock and reset routing, and the
-\ac{ps}--\ac{pl} port bindings in a single
-artifact~\cite{AMD_UG994}.
-
-\paragraph{Zynq PS IP:}
-The \ac{ps} subsystem of the ZU48DR is represented in the
-block design by the Zynq UltraScale+ \ac{mpsoc} \ac{ip}
-core, which generates the \ac{ps} hardware
-configuration~\cite{AMD_UG1085}.
-A graphical configuration dialog controls which \ac{ps}
-peripherals are enabled, the \ac{ddr}4 memory interface
-parameters, the \ac{pl} clock outputs, and the mapping
-of \ac{hp} and general-purpose \ac{axi} ports to the
-\ac{pl} interconnect~\cite{AMD_UG1085}.
-Exporting the block design from this \ac{ip} core produces
-the hardware platform file consumed by downstream Vitis
-or PYNQ flows~\cite{PYNQ_DOC}.
-
-\paragraph{AXI SmartConnect:}
-The AMD SmartConnect \ac{ip} core manages the \ac{axi}
-interconnect between the \ac{ps} master ports and the
-slave register interfaces of the \ac{pl} \ac{ip}
-cores~\cite{AMD_UG994}.
-It performs clock crossing, data-width conversion, and
-arbitration automatically, allowing \ac{ip} cores
-operating in different \ac{axi} configurations to be
-connected without manual bridging logic~\cite{AMD_UG994}.
-
-\paragraph{Address Editor:}
-The Vivado address editor assigns each \ac{axi}4-Lite
-slave in the block design a unique base address within
-the \ac{ps} memory map~\cite{AMD_UG1085}.
-These addresses are exported to the \texttt{.hwh} file
-at implementation, where the PYNQ overlay parser reads
-them to construct the Python \ac{ip} dictionary described
-in Section~\ref{subsec:pynq_overlay}~\cite{PYNQ_DOC}.
-Every custom \ac{rtl} module that exposes an \ac{axi}4-Lite
-register file receives a unique base address in this editor,
-making its registers directly addressable by the \ac{arm}
-Cortex-A53~\cite{AMD_UG1085}.
-
-% ------------------------------------------------------------
-\subsection{IP Packaging: Custom RTL Modules}
-\label{subsec:ip_packaging}
-
-Before a custom \ac{rtl} module can be instantiated in
-the Vivado \ac{ip} Integrator block design, it must be
-packaged as a Vivado \ac{ip} core using the Vivado
-\ac{ip} Packager~\cite{AMD_UG994}.
-The packager wraps a SystemVerilog \ac{rtl} source
-hierarchy in a standardized IP-XACT descriptor
-that the block design canvas can discover, instantiate,
-and connect~\cite{AMD_UG994}.
-
-\paragraph{AXI Port Inference:}
-The Vivado \ac{ip} Packager infers \ac{axi} interface
-types from the port naming conventions of the \ac{rtl}
-module~\cite{AMD_UG994}. 
-Ports whose names follow the \ac{axi}4-Stream prefix
-convention (\texttt{s\_axis\_*} for slave,
-\texttt{m\_axis\_*} for master) are automatically
-grouped into typed \ac{axi}4-Stream interface objects
-that the block design canvas can connect with a single
-wire, rather than requiring individual port-to-port
-connections~\cite{AMD_UG994}.
-Similarly, \ac{axi}4-Lite register file ports are
-inferred from the \texttt{s\_axi\_*} naming
-convention~\cite{AMD_UG994}.
-
-\paragraph{component.xml:}
-The output of the packaging step is a
-\texttt{component.xml} file that defines the \ac{ip}
-core interface, its port groupings, bus interface
-protocols, and any user-visible parameters exposed
-through the block design configuration
-dialog~\cite{AMD_UG994}.
-The packaged core is stored in the Vivado \ac{ip}
-repository and is available for instantiation in any
-block design that references that repository
-path~\cite{AMD_UG994}.
-The packaging approach therefore supports a modular
-design methodology in which each \ac{rtl} stage of
-the J.83B processing chain is developed, verified,
-and packaged independently before integration into
-the top-level block design~\cite{Kovacs2024}.
-
-% ------------------------------------------------------------
-\subsection{Synthesis, Implementation, and Bitstream Generation}
-\label{subsec:vivado_flow}
-
-Following block design completion, the Vivado flow
-proceeds through three sequential compilation stages
-that transform the \ac{rtl} and block design sources
-into a device-specific binary configuration:
-synthesis, implementation, and bitstream
-generation~\cite{AMD_UG892}.
-
-\paragraph{Synthesis:}
-Synthesis translates the \ac{rtl} source files and
-the block design wrapper into a technology-mapped
-netlist expressed in terms of UltraScale+ primitives
-such as \ac{lut6}, \ac{ff}, DSP48E2, and
-\ac{bram}~\cite{AMD_UG892}.
-The synthesizer performs combinational optimization,
-register retiming, and resource inference, converting
-inferred arithmetic operations into DSP48E2 instances
-and inferred memories into \ac{bram} or distributed
-\ac{ram} primitives as appropriate~\cite{AMD_UG892}.
-The synthesis report lists resource utilization
-estimates and identifies any \ac{rtl} constructs
-that could not be mapped to available
-primitives~\cite{AMD_UG892}.
-
-\paragraph{Implementation:}
-Implementation places the synthesized netlist onto
-the physical sites of the ZU48DR die and routes the
-interconnect between placed
-primitives~\cite{AMD_UG892}. 
-The placer assigns each \ac{lut}, \ac{ff}, DSP48E2,
-and \ac{bram} instance to a specific site on the
-\ac{cl} fabric, subject to timing, power, and
-congestion constraints~\cite{AMD_UG892}. 
-The router then connects the placed instances through
-the UltraScale+ programmable interconnect, and the
-timing analyzer verifies that every combinational
-path in the design meets its setup and hold
-constraints at the target clock
-frequency~\cite{AMD_UG892}. 
-A design that fails timing closure must be modified
-through pipeline stage insertion, constraint
-relaxation, or \ac{rtl} restructuring and
-re-implemented until all paths meet their
-constraints~\cite{AMD_UG892}. 
-
-\paragraph{Bitstream Generation:}
-Once implementation achieves timing closure, the
-Vivado bitstream generator converts the placed and
-routed netlist into the binary \texttt{.bit} file
-that programs the UltraScale+ configuration
-memory~\cite{AMD_UG892}.
-Vivado simultaneously exports the hardware handoff
-(\texttt{.hwh}) file from the block design, which
-records the \ac{ip} address map and interface
-metadata used by the PYNQ overlay loader~\cite{PYNQ_DOC}.
-The \texttt{.bit} and \texttt{.hwh} files together
-constitute the complete \ac{pl} overlay deliverable
-of this thesis~\cite{PYNQ_DOC,Kovacs2024}.
-
-%\clearpage
-% ------------------------------------------------------------
 \section{MATLAB-to-RTL Workflow}
 \label{sec:matlab_rtl}
 
@@ -1521,7 +1638,7 @@ Evaluation of HDL Coder against the five specified blocks
 revealed three categories of limitation that prevented the
 generated \ac{rtl} from meeting the integration requirements
 of the Vivado block design flow described in
-Section~\ref{sec:vivado_background}.
+Section~\ref{sec:fpga_programming}.
 
 \paragraph{AXI4-Stream Interface Generation:}
 The Vivado \ac{ip} Integrator block design requires each
