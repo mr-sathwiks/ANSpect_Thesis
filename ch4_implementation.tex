@@ -3956,10 +3956,17 @@ endpoints~(Table~\ref{tab:pl08_timing}).
 
 \section{RF Data Converter}
 \label{sec:rfdc}
-% [NDA-IMPL] — BLOCKED
-% TODO: Section intro requires NDA CLEAR: IMPL [4.5] + handoff
-%   - Existence of RFDC block may be stated (public IP)
-%   - Tile configuration parameters: NDA-IMPL — no detail without clearance
+
+The \ac{rfdc} subsystem of the ZU48DR is implemented as a single
+Xilinx \texttt{usp\_rf\_data\_converter} v2.6 LogiCORE \ac{ip}
+instance that encapsulates both the
+\ac{rf}-\ac{dac} and \ac{rf}-\ac{adc} tile arrays on a common
+\ac{axi}4-Lite configuration bus~\cite{AMD_PG269,RealDigital_A6}.
+\ac{dac} Tile~228 (RFDC-01) is the terminal stage of the J.83B
+transmit signal chain and is described in
+Section~\ref{subsec:dac_tile228}; \ac{adc} Tile~224 (RFDC-02)
+serves a diagnostic role for loopback verification and is described
+in Section~\ref{subsec:adc_tile224}.
 
 % ============================================================
 % CH-4.4.1  RFDC-01: DAC_B Tile228
@@ -4471,15 +4478,454 @@ The \ac{rfdc} configuration is frozen on the basis of this result.
 
 %\clearpage
 
+% ============================================================
+% CH-4.4.2  RFDC-02: ADC_D Tile224
+% Source : RFDC-02_ADC_D_Tile224_handoff.md v2.0  29-Oct-2026
+%          usp_rf_data_converter v2.6 (Xilinx Catalog IP)
+%          Shared instance: design_1_rfdc_0 (with RFDC-01)
+% NDA CLEAR: IMPL [4.4] — received
+% Preflight : CH-4.4.2 [RFDC-02] — PASS  01-Nov-2026
+%   IMG-1 OMITTED (diagnostic path in §4.9.2)
+%   IMG-2 [x]  IMG-3 [x]
+%   IMG-4 OMITTED (IP-INTERNAL)  IMG-5 OMITTED (continuous stream)
+% Expanded  : 01-Nov-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+%   IP Exception : §3 → IP Configuration; §4 OMITTED; §5 OMITTED
+%   §6 OMITTED   : diagnostic path — downstream undefined in TX scope;
+%                  signal path documented in §4.9.2
+% ============================================================
+
 \subsection{ADC: Tile 224}
 \label{subsec:adc_tile224}
-% [NDA-IMPL] — BLOCKED (RFDC-02)
-% TODO: Requires NDA CLEAR: IMPL [4.5.2] + handoff
-%   - Tile/channel configuration: NDA-IMPL
-%   - NOTE: ADC Tile 224 used in diagnostic role (RFDC isolation
-%     test + DAC→ADC EVM loopback) — document in §4.9.2
-%   - Config detail still requires handoff
-\clearpage  
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The \ac{rfdc} \ac{adc} module (RFDC-02) is the \ac{rf}-\ac{adc}
+Tile~224 (ADC\_D) of the AMD Zynq~UltraScale+
+\texttt{usp\_rf\_data\_converter} v2.6 LogiCORE \ac{ip} instance,
+which it shares with \ac{dac} Tile~228 described in
+Section~\ref{subsec:dac_tile228}~\cite{AMD_PG269}.
+RFDC-02 is not part of the J.83B transmit signal chain; it serves
+a diagnostic role for \ac{rf} signal monitoring and loopback
+verification.
+Its diagnostic signal path, verification use case, and the
+system-level isolation test on which its configuration is frozen
+are described in Section~\ref{subsec:lock_failure}.
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+
+Figure~\ref{fig:rfdc02_ip_block} shows the \texttt{rfdc\_adc} core
+as it appears in the Vivado \ac{ip} Integrator block canvas.
+Two differences distinguish it from RFDC-01: the analog port
+\texttt{vin0\_01} appears on the left as an input, and the
+\ac{iq} output is carried on two separate 16-bit \ac{axi}4-Stream
+master ports (\texttt{m00\_axis} for I, \texttt{m01\_axis} for Q)
+rather than a single 32-bit packed word.
+The full port list is given in Table~\ref{tab:rfdc02_ports}.
+
+% [ALT: Screenshot of the rfdc_adc IP core in Vivado IP Integrator.
+%       The block is labeled rfdc_adc with subtitle Zynq UltraScale+
+%       RF Data Converter. On the left side: s_axi interface group;
+%       adc0_clk and sysref_in clock inputs; analog input port
+%       vin0_01 with differential pin symbols; control ports
+%       s_axi_aclk, s_axi_aresetn, m0_axis_aresetn, m0_axis_aclk.
+%       On the right side: m00_axis interface group with ports
+%       m00_axis_tdata[15:0] (output), m00_axis_tready (input,
+%       filled triangle), m00_axis_tvalid (output); m01_axis
+%       interface group with ports m01_axis_tdata[15:0] (output),
+%       m01_axis_tready (input, filled triangle), m01_axis_tvalid
+%       (output); clock output clk_adc0; interrupt output irq.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_rfdc02_ip_block}
+  \caption{RFDC-02 \texttt{rfdc\_adc} packaged as a Vivado \ac{ip}
+           core in \ac{ip} Integrator, showing the analog
+           \texttt{vin0\_01} differential input, dual \ac{axi}4-Stream
+           master groups (\texttt{m00\_axis} I channel,
+           \texttt{m01\_axis} Q channel), \texttt{clk\_adc0} clock
+           output, and \texttt{irq} interrupt~\cite{AMD_PG269}.}
+  \label{fig:rfdc02_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{RFDC-02 \texttt{rfdc\_adc} port list~\cite{AMD_PG269}.}
+  \label{tab:rfdc02_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.6cm}p{5.8cm}}
+    \hline
+    Port                         & Dir  & Width & Protocol
+      & Description \\
+    \hline
+    \texttt{m0\_axis\_aclk}      & in   & 1     & Clock
+  & \ac{axi}4-Stream clock input — 32.1632\,MHz;
+    derived from \texttt{clk\_adc0} via Vivado Clock Wizard \ac{ip} \\[2pt]
+    \texttt{m0\_axis\_aresetn}   & in   & 1     & Reset
+      & \ac{axi}4-Stream active-low reset \\[2pt]
+    \texttt{s\_axi\_aclk}        & in   & 1     & Clock
+      & \ac{axi}4-Lite configuration clock — 100\,MHz \\[2pt]
+    \texttt{s\_axi\_aresetn}     & in   & 1     & Reset
+      & \ac{axi}4-Lite active-low reset \\[2pt]
+    \texttt{adc0\_clk}           & in   & 1     & Clock
+      & \ac{adc} reference clock from board
+        (LMX2594)~\cite{TI_LMX2594} \\[2pt]
+    \texttt{sysref\_in}          & in   & 1     & Custom
+      & SYSREF signal from LMK04828~\cite{TI_LMK04828} \\[2pt]
+    \texttt{vin0\_01}            & in   & RF    & Analog
+      & Differential \ac{rf} input $\leftarrow$ RF-02
+        balun~\cite{RealDigital_A6} \\[2pt]
+    \texttt{s\_axi} (bus)        & in   & —     & \ac{axi}4-Lite S
+      & Runtime configuration and status;
+        \ac{ps} via AXI SmartConnect \\[2pt]
+    \texttt{m00\_axis\_tdata}    & out  & 16    & \ac{axi}4-Stream M
+      & I channel — 16-bit signed; \ac{rfadc} output \\[2pt]
+    \texttt{m00\_axis\_tvalid}   & out  & 1     & \ac{axi}4-Stream M
+      & I channel data valid \\[2pt]
+    \texttt{m00\_axis\_tready}   & in   & 1     & \ac{axi}4-Stream M
+      & I channel downstream ready \\[2pt]
+    \texttt{m01\_axis\_tdata}    & out  & 16    & \ac{axi}4-Stream M
+      & Q channel — 16-bit signed; \ac{rfadc} output \\[2pt]
+    \texttt{m01\_axis\_tvalid}   & out  & 1     & \ac{axi}4-Stream M
+      & Q channel data valid \\[2pt]
+    \texttt{m01\_axis\_tready}   & in   & 1     & \ac{axi}4-Stream M
+      & Q channel downstream ready \\[2pt]
+    \texttt{clk\_adc0}           & out  & 1     & Clock
+  & 40.204\,MHz \ac{adc} tile fabric clock output to \ac{pl};
+    drives Vivado Clock Wizard \ac{ip} to generate
+    \texttt{m0\_axis\_aclk} \\[2pt]
+    \texttt{irq}                 & out  & 1     & Custom
+      & \ac{rfdc} interrupt to \ac{ps} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  IP CONFIGURATION
+% (Xilinx IP exception — replaces FSM section)
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{IP Configuration.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{RFDC-02 Vivado block design configuration parameters
+           (\texttt{usp\_rf\_data\_converter}~v2.6,
+           \texttt{xczu48dr-ffvg1517-2-e},
+           Tile~224, Slice~00)~\cite{AMD_PG269}.}
+  \label{tab:rfdc02_ip_config}
+  \centering
+  \small
+  \begin{tabular}{p{5.0cm}p{4.0cm}p{5.5cm}}
+    \hline
+    Parameter & Value & Notes \\
+    \hline
+    \ac{adc} sampling rate
+      & 1.28652888\,\ac{gsps}
+      & Internal \ac{rfadc} sample rate \\[3pt]
+    Decimation mode
+      & 40$\times$
+      & $1.28653\,\text{\ac{gsps}} / 40 = 32.1632$\,MHz
+        fabric output rate \\[3pt]
+    Output data format
+      & Complex \ac{iq}
+      & Separate 16-bit I (\texttt{m00\_axis}) and
+        16-bit Q (\texttt{m01\_axis}) streams \\[3pt]
+    \ac{adc} resolution
+      & 12-bit analog;
+        16-bit \ac{dsp} word
+      & 12 analog bits sign-extended to 16-bit
+        \ac{axi}4-Stream word \\[3pt]
+    Mixer type
+      & Fine \ac{nco}
+      & Programmable-frequency digital oscillator \\[3pt]
+    Mixer mode
+      & R2C (real-to-complex)
+      & Real \ac{adc} samples $\to$ complex \ac{iq} output \\[3pt]
+    \ac{nco} frequency
+      & $-$177\,MHz
+      & Conjugate of \ac{dac} \ac{nco} ($+$177\,MHz);
+        shifts \ac{rf} center to baseband \\[3pt]
+    Coarse mixer frequency
+      & BYPASS (value~0)
+      & No $F_s/4$ shift applied \\[3pt]
+    Dither
+      & Enabled
+      & Improves spurious-free dynamic range \\[3pt]
+    Nyquist zone
+      & 1
+      & Fundamental zone operation \\[3pt]
+    Background calibration
+      & Active
+      & CalOpt Mode~1; runs continuously after startup;
+        initial calibration $\approx$10\,ms \\[3pt]
+    Active slice
+      & Slice~00 only$^{a}$
+      & Slice~01 inactive; see footnote \\[3pt]
+    Reference clock frequency
+      & 321.632\,MHz
+      & Supplied by LMX2594~\cite{TI_LMX2594} \\[3pt]
+    \ac{adc} fabric frequency
+      & 32.1632\,MHz
+      & $= F_s / 40$; \texttt{m0\_axis\_aclk} domain \\[3pt]
+    \texttt{clk\_adc0} output frequency
+      & 40.204\,MHz
+      & Exported to \ac{pl}; \ac{adc} tile clock
+        reference~\cite{AMD_PG269} \\[3pt]
+    \ac{axi}4-Lite clock
+      & 100.0\,MHz
+      & \texttt{s\_axi\_aclk}; \ac{ps} configuration bus \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    $^{a}$The block design configuration dump shows Slice~01
+    enabled as a default artifact of the \ac{ip} parameter
+    inference; design review confirmed Slice~01 is not
+    intentionally driven in the production design and has
+    no functional effect~\cite{AMD_PG269}.
+  \end{minipage}
+\end{table}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{RFDC-02 clock domain summary~\cite{AMD_PG269}.}
+  \label{tab:rfdc02_clocks}
+  \centering
+  \small
+  \begin{tabular}{p{3.5cm}rp{3.5cm}p{4.7cm}}
+    \hline
+    Clock Signal & Frequency & Source & Role \\
+    \hline
+    \texttt{s\_axi\_aclk}
+      & 100.0\,MHz
+      & \ac{ps} clock wizard~\cite{AMD_UG1085}
+      & \ac{axi}4-Lite runtime configuration \\[3pt]
+    \texttt{m0\_axis\_aclk}
+      & 32.1632\,MHz
+      & \texttt{clk\_adc0} $\to$ Vivado Clock Wizard \ac{ip}
+        (40.204\,MHz $\to$ 32.1632\,MHz)
+      & \ac{axi}4-Stream \ac{iq} output
+        ($= F_s / 40$) \\[3pt]
+    \texttt{clk\_adc0} (out)
+      & 40.204\,MHz
+      & \texttt{BUFG\_GT} from \ac{rfadc} tile
+      & Exported \ac{adc} tile clock;
+        Clock Wizard reference input \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+Figure~\ref{fig:rfdc02_adc_chain} shows the internal \ac{rfadc}
+signal chain from the analog differential input to the dual
+\ac{axi}4-Stream \ac{iq} output.
+The 12-bit analog-to-digital conversion produces a real sample
+stream at 1.28652888\,\ac{gsps}; dither is enabled to spread
+quantization noise and improve the spurious-free dynamic range
+of the digitized signal~\cite{AMD_PG269}.
+The fine \ac{nco} at $-$177\,MHz performs real-to-complex
+conversion, downconverting the \ac{rf}-centered input to
+complex baseband \ac{iq}, with the \ac{nco} frequency chosen
+as the conjugate of the \ac{dac} \ac{nco} at $+$177\,MHz to
+preserve loopback symmetry in diagnostic
+operation~\cite{AMD_PG269}.
+The 40$\times$ decimation filter reduces the complex sample rate
+to 32.1632\,MHz and delivers the in-phase and quadrature
+components on two independent 16-bit \ac{axi}4-Stream master
+ports.
+Background calibration (CalOpt Mode~1) runs continuously after
+an initial $\approx$10\,ms startup window; the \ac{rfadc} does
+not assert data valid until calibration completes and the
+\ac{rfdc} signals \texttt{READY} via the \texttt{irq} port or
+the \ac{axi}4-Lite status register~\cite{AMD_PG269}.
+The three clock domains and their derivation are summarised in
+Table~\ref{tab:rfdc02_clocks}; the \texttt{m0\_axis\_aclk}
+domain (32.1632\,MHz) is derived from \texttt{clk\_adc0} via
+a Vivado Clock Wizard \ac{ip} instance, following the same
+topology as RFDC-01.
+
+% [ALT: Block diagram titled ADC signal chain block diagram,
+%       contained within a yellow box labeled RFDC ADC tile.
+%       From left to right: analog input arrow labeled vin0_01
+%       Analog input with differential symbol. Block 1 (bold
+%       border): 12-bit ADC at 1.28652888 GSPS. Arrow labeled
+%       Real at 1.28652888 GSPS. Block 2 (bold border): Mixer,
+%       with annotations Fine NCO -177 MHz and Real-to-Complex
+%       (R2C). Arrow labeled I/Q at 1.28652888 GSPS. Block 3:
+%       Decimation 40x. Two output arrows on the right labeled
+%       AXI-S I (m00_axis, 16-bit AXI-S at 32.1632 MHz) and
+%       AXI-S Q (m01_axis, 16-bit AXI-S at 32.1632 MHz). Below
+%       the diagram four annotation lines read: ADC resolution:
+%       12-bit analog; 16-bit DSP word (sign-extended); Dither:
+%       enabled; Coarse mixer: BYPASS; Nyquist Zone 1.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{figures/ch4/ch4_rfdc02_adc_chain}
+  \caption{\ac{rfadc} Tile~224 internal signal chain.
+           The 12-bit \ac{adc} digitizes the analog input at
+           1.28652888\,\ac{gsps}; the fine \ac{nco} at
+           $-$177\,MHz performs real-to-complex conversion;
+           the 40$\times$ decimation filter delivers the
+           \ac{iq} output on two independent 16-bit
+           \ac{axi}4-Stream master
+           ports~\cite{AMD_PG269}.}
+  \label{fig:rfdc02_adc_chain}
+\end{figure}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §4  OMITTED — IP-INTERNAL (no custom ROMs)
+% §5  OMITTED — IP-INTERNAL (no RTL architecture)
+% §6  OMITTED — diagnostic path; downstream undefined in TX scope;
+%               signal path documented in §4.9.2
+% ------------------------------------------------------------------
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION AND TIMING
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Resource Utilization and Timing.}
+\leavevmode\par
+\begin{table}[!h]
+  \caption{RFDC-02 post-implementation resource utilization
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, isolation block design,
+           29~Oct~2026)~\cite{AMD_PG269}.}
+  \label{tab:rfdc02_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource                & Used    & Available & Utilization \\
+    \hline
+    \ac{lut}                & 1{,}729 & 425{,}280 & 0.41\%$^{a}$ \\[2pt]
+    \ac{ff}                 & 1{,}363 & 850{,}560 & 0.16\%$^{a}$ \\[2pt]
+    \ac{bram}               &       0 & 1{,}080   & 0.00\%       \\[2pt]
+    \ac{dsp}                &       0 & 4{,}272   & 0.00\%       \\[2pt]
+    \ac{rf}-\ac{dac} tiles  &  4 / 4  & 4         & 100\%$^{b}$  \\[2pt]
+    \ac{rf}-\ac{adc} tiles  &  4 / 4  & 4         & 100\%$^{b}$  \\[2pt]
+    \texttt{BUFG\_GT}       &       1 & 312       & 0.32\%       \\[2pt]
+    \texttt{BUFGCE}         &       1 & 216       & 0.46\%       \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    $^{a}$Lower-bound estimate from isolation block design.
+    Diagnostic downstream data paths and \ac{irq} routing were
+    pruned by synthesis when ports were left unconnected.
+    RFDC-02 shares one \ac{ip} instance with RFDC-01
+    (\texttt{design\_1\_rfdc\_0}); the two utilization figures
+    are not additive — the production block design implementation
+    report gives the true combined count~\cite{AMD_PG269}.\\[3pt]
+    $^{b}$All \ac{rf}-\ac{dac} and \ac{rf}-\ac{adc} tiles are
+    instantiated as fixed silicon by the \ac{rfdc} \ac{ip}
+    wrapper regardless of which channels are
+    enabled~\cite{AMD_PG269}.
+  \end{minipage}
+\end{table}
+
+\begin{table}[!h]
+  \caption{RFDC-02 post-implementation timing summary
+           (\texttt{xczu48dr-ffvg1517-2-e}, speed-grade~$-2$
+           PRODUCTION, Vivado~2024.2, isolation block design,
+           29~Oct~2026).}
+  \label{tab:rfdc02_timing}
+  \centering
+  \begin{tabular}{lllll}
+    \hline
+    Clock & Frequency & WNS & WHS & Status \\
+    \hline
+    \texttt{s\_axi\_aclk}
+      & 100.0\,MHz
+      & $+5.486$\,ns
+      & $+0.020$\,ns$^{c}$
+      & MET \\[2pt]
+    \texttt{m0\_axis\_aclk}
+      & 32.164\,MHz
+      & $+30.478$\,ns
+      & $+0.205$\,ns
+      & MET \\[2pt]
+    \texttt{RFADC0\_CLK}
+      & 40.204\,MHz
+      & PW only
+      & $+11.903$\,ns
+      & MET \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    $^{c}$\texttt{s\_axi\_aclk} hold slack of $+0.020$\,ns is
+    marginal in the isolation block design and has not been
+    re-verified in the full production block design.
+    Re-verification before submission is required.
+  \end{minipage}
+\end{table}
+
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\paragraph{Verification.}
+
+\textit{Simulation.}
+As a Xilinx catalog \ac{ip} block, RFDC-02 has no user-authored
+simulation testbench~\cite{AMD_PG269}.
+Functional correctness of the \ac{rfadc} configuration is
+established entirely by the system-level hardware isolation test
+described below.
+
+\textit{Hardware.}
+
+\begin{table}[htbp]
+  \caption{RFDC-02 hardware verification summary.}
+  \label{tab:rfdc02_hw}
+  \centering
+  \small
+  \begin{tabular}{p{3.2cm}lp{5.5cm}p{3.5cm}}
+    \hline
+    Test & Clock & Method & Result \\
+    \hline
+    \ac{rfdc} isolation
+      & 32.164\,MHz
+      & Known-good J.83B \ac{qam256} reference source $\to$
+        ADC\_D (RF-02) $\to$ RFDC-02 $\to$ \ac{cdc} \ac{fifo}
+        $\to$ RFDC-01 $\to$ HDHomeRun consumer \ac{qam256}
+        receiver~\cite{RealDigital_A6,Kovacs2024}
+      & \texttt{lock=qam256};
+        \texttt{ss=100};
+        \texttt{snq=100};
+        \texttt{seq=100} --- PASS \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The isolation test directed a known-good J.83B \ac{qam256}
+signal from an external reference source through the \ac{rfadc}
+receive path and back through the \ac{rfdac} transmit path in a
+passthrough configuration, with the output verified by a consumer
+cable receiver.
+A complete lock indication with all quality metrics at maximum
+confirms that the \ac{adc} tile configuration, \ac{nco}
+frequency, decimation chain, and background calibration are
+correct.
+The \ac{rfdc} configuration is frozen on the basis of this result.
+
+\clearpage
+
 % ------------------------------------------------------------
 \section{RF TX Front-End}
 \label{sec:rf_frontend}
