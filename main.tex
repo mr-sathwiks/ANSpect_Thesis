@@ -31,6 +31,11 @@
 %                    §4.9 restructured: Loopback Validation replaced
 %                    by Consumer Device Lock Failure + Open Hypotheses;
 %                    ch2/ch3/ch5 prose updated to TX-only scope
+% v1.7  03-Nov-2026  List of Abbreviations spacing fix:
+%                    \itemsep + \parsep + \topsep = 0pt inside acronym env
+%                    \baselinestretch reset to 1 locally — match LOF/LOT appearance
+%                    \footnotesize applied locally — visual consistency with LOF/LOT
+%                    No setspace pkg — UTD compliant
 % ============================================================
 
 \documentclass[doublespacing]{utdthesis}
@@ -138,6 +143,12 @@
 %\addcontentsline{toc}{chapter}{List of Abbreviations}
 \chapter*{List of Abbreviations}
 \begin{acronym}[MPEG-TS]   % longest SHORT label sets column width
+  % v1.7 spacing fix — suppress doublespacing bleed-through
+  \setlength{\itemsep}{0pt}
+  \setlength{\parsep}{0pt}
+  \setlength{\topsep}{0pt}
+  \renewcommand{\baselinestretch}{1}\normalsize   % reset to single-space locally
+  \footnotesize
   \input{abbrevs}
 \end{acronym}
 
