@@ -4176,12 +4176,276 @@ endpoints~(Table~\ref{tab:pl08_timing}).
 %   - Internal algorithm: hard block, do not draft or paraphrase
 %   - Requires NDA CLEAR: IMPL [4.3.10] for structural frame only
 
-\subsection{PL-11: Register File RTL}
+% ============================================================
+% CH-4.3.11  PL-11: anspect_ctrl_regs — AXI-Lite Register File
+% Source : PL-11_anspect_ctrl_regs_handoff.md v2.0  28-Jul-2026
+%          RTL: anspect_ctrl_regs.v v2  28-Jul-2026
+%               anspect_ctrl_regs_slave_lite_v1_0_S00_AXI.v v2
+%          Vivado IP Packager template — customized registers and output ports
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.11 [PL-11] — PASS  03-Nov-2026
+%   IMG-1 [x]  IMG-2 [x]  IMG-3 WAIVED (Vivado template FSM)
+%   Resource/Timing [OMITTED — port isolation not possible;
+%                   unconnected outputs optimized away]
+%   HW validation [x] — 0x00–0x1C PYNQ MMIO validated;
+%                       0x20 validated — frame_sync_cw → PL-06 ctrl_word confirmed on board
+%                       PL-02→PL-08 deployment confirms config operative
+% Expanded  : 03-Nov-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2
+%             §4 OMITTED — no AXI-Stream datapath; register file only
+%             §5 OMITTED — no ROM/BRAM/filter
+%             §7 OMITTED — port isolation not possible
+% ============================================================
+
+\subsection{PL-11: \texttt{anspect\_ctrl\_regs} AXI-Lite Register File}
 \label{subsec:pl11}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.11] + handoff for PL-11
-%   - AXI-Lite register map is NDA-IMPL — do not include offsets
-%     or field definitions without explicit clearance
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+PL-11 (\texttt{anspect\_ctrl\_regs}) is a Xilinx \ac{axi}-Lite
+peripheral \ac{ip}, generated via the Vivado \ac{ip} Packager template
+and extended with application-specific register names and output ports,
+supplying quasi-static configuration values to downstream \ac{pl}
+modules at boot time~\cite{ARM_IHI0022}.
+The \ac{ps} writes all registers via AXI SmartConnect \ac{ip} before
+enabling the \ac{axi} \ac{dma} transmit channel~\cite{AMD_PG247}; thereafter the
+registers hold static until the next boot sequence.
+In the current transmit chain build, \texttt{frame\_sync\_cw[3:0]} is
+the only output connected downstream—driving PL-06
+\texttt{ctrl\_word}; the remaining output ports are provisioned for
+future expansion and are unconnected in the block design.
+PL-11's position in the transmit fabric is shown in
+Figure~\ref{fig:pl11_pipeline}.
+
+% [ALT: Block diagram with three rectangular blocks. Left block
+%       (lavender): PS. Centre block (green): PL-11
+%       anspect_ctrl_regs. Upper-right block (lavender): PL-06
+%       FRAME_SYNC_ENC. Lower-right block (lavender): Future Use.
+%       Arrow from PS to PL-11 labelled AXI-Lite Config Bus.
+%       Arrow from PL-11 to PL-06 labelled ctrl_word / 4-bits.
+%       Multi-bit bus arrow from PL-11 to Future Use (unconnected).
+%       250 MHz PL clock input shown at bottom of PL-11.]
+\begin{figure}[htbp]
+  \centering
+    \includegraphics[width=0.75\linewidth]{figures/ch4/ch4_pl11_pipeline}
+  \caption{PL-11 position in the transmit fabric: the \ac{ps} writes
+           configuration registers via the \ac{axi}-Lite bus;
+           \texttt{frame\_sync\_cw[3:0]} is the only live downstream
+           connection in the current build, driving PL-06
+           \texttt{ctrl\_word}.}
+  \label{fig:pl11_pipeline}
+\end{figure}
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+\leavevmode\par
+
+% [ALT: Vivado IP Integrator block view of the anspect_ctrl_regs
+%       instance. Left side: S00_AXI interface bus, s00_axi_aclk
+%       clock input, s00_axi_aresetn active-low reset input.
+%       Right side output ports: ctrl_out[31:0], mode_out[1:0],
+%       alpha_out[15:0], ldpc_rate_out[3:0], frame_sync_cw[3:0].
+%       Block label: AXI-Lite Configuration Register File (PL-11)
+%       (Pre-Production).]
+\begin{figure}[htbp]
+  \centering
+    \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl11_ip_block}
+  \caption{Vivado IP Integrator view of \texttt{anspect\_ctrl\_regs}
+           showing the \texttt{S00\_AXI} interface bus and all
+           custom configuration output ports.}
+  \label{fig:pl11_ip_block}
+\end{figure}
+\FloatBarrier
+
+\begin{table}[!h]
+  \caption{PL-11 (\texttt{anspect\_ctrl\_regs}) port list.}
+  \label{tab:ports_pl11}
+  \centering
+  \small
+  \begin{tabular}{l l l p{2.0cm} p{5.4cm}}
+    \hline
+    Port & Dir & Width & Protocol & Description \\
+    \hline
+    \texttt{S00\_AXI}
+      & In  & — & \ac{axi}-Lite~S
+      & \ac{ps} config bus; routed via \texttt{axi\_smc\_ctrl}
+        M00\_AXI; 6-bit address, 32-bit data \\
+    \texttt{s00\_axi\_aclk}
+      & In  & 1  & Clock
+      & 250\,MHz (\texttt{pl\_clk}); shared \ac{pl} fabric clock \\
+    \texttt{s00\_axi\_aresetn}
+      & In  & 1  & Reset
+      & Active-low reset \\
+    \texttt{ctrl\_out}
+      & Out & 32 & Custom
+      & CTRL register [31:0]; unconnected in current block design \\
+    \texttt{mode\_out}
+      & Out & 2  & Custom
+      & MODE register [1:0]; unconnected in current block design \\
+    \texttt{alpha\_out}
+      & Out & 16 & Custom
+      & ALPHA register [15:0]; unconnected in current block design \\
+    \texttt{ldpc\_rate\_out}
+      & Out & 4  & Custom
+      & LDPC\_RATE register [3:0]; unconnected in current block design \\
+    \texttt{frame\_sync\_cw}
+      & Out & 4  & Custom
+      & FRAME\_SYNC\_CW register [3:0]; drives PL-06
+        \texttt{ctrl\_word} \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §3  RTL ARCHITECTURE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{RTL Architecture.}
+
+\texttt{anspect\_ctrl\_regs} consists of a thin top-level wrapper
+that instantiates the Vivado \ac{ip} Packager-generated \ac{axi}-Lite slave,
+customized with application-specific register names, bit-width
+constraints, and combinational output port assignments.
+Nine register slots are mapped across a 6-bit address space
+(\texttt{C\_S\_AXI\_ADDR\_WIDTH}~=~6); address bits [5:2] form a
+4-bit decode index giving sixteen addressable slots, of which nine
+are used (Table~\ref{tab:regmap_pl11}).
+All five configuration output ports are combinational assigns directly
+from \texttt{slv\_regN[K:0]}; no pipeline register is interposed
+between the register file and the downstream consumer.
+Registers \texttt{slv\_reg5}, \texttt{slv\_reg6}, and
+\texttt{slv\_reg7} are declared but their write-path case arms are
+disabled for future use; synthesis eliminates the dead flip-flops.
+
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-11 register map (\texttt{anspect\_ctrl\_regs} v2.0).}
+  \label{tab:regmap_pl11}
+  \centering
+  \small
+  \begin{tabular}{l l l l p{3.6cm} p{2.6cm}}
+    \hline
+    Offset & Name & Bits & Mode & Output Port & Notes \\
+    \hline
+    \texttt{0x00} & CTRL           & [31:0] & R/W      & \texttt{ctrl\_out[31:0]}
+      & Unconnected \\
+    \texttt{0x04} & MODE           & [1:0]  & R/W      & \texttt{mode\_out[1:0]}
+      & Unconnected \\
+    \texttt{0x08} & ALPHA          & [15:0] & R/W      & \texttt{alpha\_out[15:0]}
+      & Unconnected \\
+    \texttt{0x0C} & LDPC\_RATE     & [3:0]  & R/W      & \texttt{ldpc\_rate\_out[3:0]}
+      & Unconnected \\
+    \texttt{0x10} & STATUS         & [31:0] & R/W stub & —
+      & Returns \texttt{32'h0} \\
+    \texttt{0x14} & CHB\_COUNT     & [31:0] & RO stub  & —
+      & Returns \texttt{32'h0} \\
+    \texttt{0x18} & CHA\_BLOCKS    & [31:0] & RO stub  & —
+      & Returns \texttt{32'h0} \\
+    \texttt{0x1C} & CHA\_ERRORS    & [31:0] & RO stub  & —
+      & Returns \texttt{32'h0} \\
+    \texttt{0x20} & FRAME\_SYNC\_CW & [3:0] & R/W      & \texttt{frame\_sync\_cw[3:0]}
+      & $\rightarrow$ PL-06 \texttt{ctrl\_word} \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+Table~\ref{tab:fsm_pl11} shows the \ac{axi}-Lite handshake signal
+states for the write and read \ac{fsm}s provided by the Vivado
+\ac{ip} Packager template~\cite{ARM_IHI0022}.
+
+\begin{table}[!h]
+  \caption{PL-11 \ac{axi}-Lite write and read \ac{fsm} handshake
+           signal matrix.}
+  \label{tab:fsm_pl11}
+  \centering
+  \small
+  \begin{tabular}{l l l l l p{4.0cm}}
+    \hline
+    State & \texttt{AWREADY} & \texttt{WREADY} &
+            \texttt{ARREADY} & \texttt{RVALID} & Notes \\
+    \hline
+    Idle  & 0 & 0 & 0 & 0 & Reset / initialisation \\
+    Waddr & 1 & 1 & — & — & Ready for write address and data \\
+    Wdata & 0 & 0 & — & — & Awaiting late write data \\
+    Raddr & — & — & 1 & 0 & Ready for read address \\
+    Rdata & — & — & 0 & 1 & Driving read data \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+% §4 OMITTED — no AXI-Stream datapath; PL-11 not in streaming data path
+% §5 OMITTED — no ROM, BRAM, or filter coefficients
+% §7 OMITTED — resource/timing isolation not possible; unconnected output
+%              ports optimized away by synthesis without consumer blocks
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream --- \ac{ps} via \texttt{axi\_smc\_ctrl}:}
+\begin{itemize}
+  \item The \ac{ps} reaches \texttt{S00\_AXI} through
+        \texttt{axi\_smc\_ctrl} M00\_AXI; no direct \ac{ps} \ac{mmio}
+        connection exists in the block design.
+  \item All register writes must complete before PS-03 enables the
+        \ac{axi} \ac{dma} MM2S channel; write ordering is the
+        responsibility of PS-02 (\texttt{j83b\_tx\_chain}).
+  \item Output ports update combinationally within one clock cycle of
+        the \ac{axi}-Lite write transaction completing.
+\end{itemize}
+
+\textit{Downstream --- PL-06 \texttt{FRAME\_SYNC\_ENC}:}
+\begin{itemize}
+  \item \texttt{frame\_sync\_cw[3:0]} is the only output port
+        connected in the current block design; it drives PL-06
+        \texttt{ctrl\_word}, supplying the upper nibble of trailer
+        byte~4.
+  \item PL-06 samples \texttt{frame\_sync\_cw} combinationally in
+        its \textsc{Trailer} state; a write to offset \texttt{0x20}
+        during an active data phase propagates to the in-flight
+        frame within one clock cycle. The boot sequence must write
+        \texttt{FRAME\_SYNC\_CW} before TX chain enable to avoid a
+        mid-frame update.
+  \item \texttt{ctrl\_out}, \texttt{mode\_out}, \texttt{alpha\_out},
+        and \texttt{ldpc\_rate\_out} are unconnected in the current
+        block design; stub registers at offsets \texttt{0x10}–%
+        \texttt{0x1C} return \texttt{32'h0}.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Verification.}
+
+No formal simulation testbench exists for
+\texttt{anspect\_ctrl\_regs}; verification was performed via
+\textsc{Pynq} \ac{mmio} read/write on hardware.
+Registers at offsets \texttt{0x00}–\texttt{0x1C} were validated: all
+read/write registers returned correct write-back values and all RO
+stubs returned \texttt{32'h0} as expected.
+Board deployment of PL-02 through PL-08 confirmed that
+\texttt{frame\_sync\_cw} $\rightarrow$ PL-06 \texttt{ctrl\_word}
+is operative; \textsc{Pynq} \ac{mmio} writes to offset \texttt{0x20}
+produced the expected \texttt{ctrl\_word} output in the live transmit
+chain.
+
+%\clearpage
 
 \subsection{PL-12: IQ Combiner}
 \label{subsec:pl12}
