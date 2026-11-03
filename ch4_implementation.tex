@@ -77,10 +77,246 @@
 %     see subsection note below
 %   - PL-12 (IQ Combiner) is [NDA-ALGO] permanently blocked
 
+% ============================================================
+% CH-4.3.1  PL-01: AXI DMA MM2S
+% Source : PL-01_AXI_DMA_MM2S_handoff.md v2.0  29-Oct-2026
+%          Xilinx IP: axi_dma v7.1 — NOT custom RTL
+% NDA CLEAR: IMPL [4.3] — received
+% Preflight : CH-4.3.1 [PL-01] — PASS  03-Nov-2026
+%   IMG-1 [x]  IMG-2 [x]
+%   Resource/Timing [OMITTED — Xilinx catalog IP, not isolable]
+%   HW validation [x] — implicit via PL-02 to PL-08 integration
+% Expanded  : 03-Nov-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2 — Xilinx IP exception
+%             §3 → IP Configuration; §4, §5, §7 OMITTED
+% ============================================================
+
 \subsection{PL-01: AXI DMA MM2S}
 \label{subsec:pl01}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.1] + handoff for PL-01
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The \ac{axi} \ac{dma} \ac{mm2s} module (PL-01) is the Xilinx catalog
+\ac{ip} \texttt{axi\_dma}~v7.1, configured as a \ac{mm2s}-only engine
+that streams J.83B transmit data from \ac{ddr} to the \ac{pl} fabric~\cite{AMD_PG021}.
+\Ac{sg} mode is enabled: PS-03 populates a buffer descriptor (BD) chain
+in \ac{ddr} and asserts \texttt{TAILDESC} via the \ac{axi}-Lite control
+port to initiate each transfer.
+The \ac{ip} internally serialises the 32-bit \ac{ddr} read bus to an
+8-bit \ac{axi}-Stream output delivered to PL-02 at the 250\,MHz \ac{pl}
+clock; store-and-forward is disabled, so backpressure from PL-02 stalls
+the \ac{ddr} read channel directly~\cite{AMD_PG021}.
+PL-01's position in the transmit chain is shown in
+Figure~\ref{fig:pl01_pipeline}.
+
+% [ALT: Block diagram of three rectangular blocks in a horizontal row.
+%       Left block (lavender): PS-03 DMA KICK. Centre block (green):
+%       PL-01 AXI DMA MM2S. Right block (lavender): PL-02
+%       TRANSPORT_FRAMING. Left arrow labelled AXI-Lite + AXI-MM (DDR).
+%       Right arrow labelled M_AXIS_MM2S / 8-bit AXI-S.
+%       250 MHz PL clock label below the chain.]
+\begin{figure}[htbp]
+  \centering
+    \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl01_pipeline}
+  \caption{PL-01 position in the J.83B transmit chain: PS-03 initiates
+           the \ac{sg} \ac{mm2s} transfer; 8-bit \ac{axi}-Stream output
+           feeds PL-02 at 250\,MHz.}
+  \label{fig:pl01_pipeline}
+\end{figure}
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+\leavevmode\par
+
+% [ALT: Vivado IP Integrator block view of the axi_dma_ps_pl instance.
+%       Left side: S_AXI_LITE bus, s_axi_lite_aclk, m_axi_sg_aclk,
+%       m_axi_mm2s_aclk, axi_resetn. Right side: M_AXI_SG bus,
+%       M_AXI_MM2S bus, M_AXIS_MM2S with individual signals
+%       (tdata[7:0], tkeep[0:0], tlast, tready, tvalid),
+%       mm2s_prmry_reset_out_n, mm2s_introut.]
+\begin{figure}[htbp]
+  \centering
+    \includegraphics[width=0.40\linewidth]{figures/ch4/ch4_pl01_ip_block}
+  \caption{Vivado IP Integrator view of \texttt{axi\_dma\_ps\_pl}
+           (\texttt{axi\_dma}~v7.1) showing all port interfaces.}
+  \label{fig:pl01_ip_block}
+\end{figure}
+\FloatBarrier
+
+\begin{table}[!h]
+  \caption{PL-01 (\texttt{axi\_dma\_ps\_pl}) port list.}
+  \label{tab:ports_pl01}
+  \centering
+  \small
+  \begin{tabular}{l l l p{2.0cm} p{5.6cm}}
+    \hline
+    Port & Dir & Width & Protocol & Description \\
+    \hline
+    \texttt{m\_axi\_mm2s\_aclk}
+      & In  & 1 & Clock
+      & 250\,MHz (\texttt{pl\_clk}); shared with all \ac{pl} modules \\
+    \texttt{m\_axi\_sg\_aclk}
+      & In  & 1 & Clock
+      & 250\,MHz; same net as \texttt{mm2s\_aclk} \\
+    \texttt{s\_axi\_lite\_aclk}
+      & In  & 1 & Clock
+      & 250\,MHz; same net \\
+    \texttt{axi\_resetn}
+      & In  & 1 & Reset
+      & Active-low; \texttt{rst\_pl\_250mhz/peripheral\_aresetn};
+        resets entire \ac{pl} chain \\
+    \texttt{S\_AXI\_LITE}
+      & In  & — & \ac{axi}-Lite~S
+      & \ac{ps} control via \texttt{axi\_smc\_ctrl} M02\_AXI;
+        10-bit address \\
+    \texttt{M\_AXI\_MM2S}
+      & Out & — & \ac{axi}-MM~M (R)
+      & \ac{ddr} TX data read; 32-bit;
+        \texttt{axi\_smc\_data} S00\_AXI \\
+    \texttt{M\_AXI\_SG}
+      & Out & — & \ac{axi}-MM~M (RW)
+      & \ac{sg} descriptor fetch/writeback; 32-bit;
+        \texttt{axi\_smc\_data} S02\_AXI \\
+    \texttt{M\_AXIS\_MM2S}
+      & Out & 8 & \ac{axi}-Stream~M
+      & TX data to PL-02; \texttt{TLAST}/\texttt{TKEEP} driven
+        but not consumed by PL-02 \\
+    \texttt{mm2s\_introut}
+      & Out & 1 & —
+      & Unconnected; PS-03 uses polling \\
+    \texttt{mm2s\_prmry\_reset\_out\_n}
+      & Out & 1 & —
+      & Unconnected \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §3  IP CONFIGURATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{IP Configuration.}
+
+Table~\ref{tab:ipconfig_pl01} lists the Vivado block design parameters
+for this instance.
+The S2MM channel is disabled (\texttt{c\_include\_s2mm}~=~0), making
+PL-01 a unidirectional \ac{mm2s}-only engine.
+The \ac{ip} core internally serialises the 32-bit \ac{ddr} read bus
+(\texttt{c\_m\_axi\_mm2s\_data\_width}~=~32) to the 8-bit
+\ac{axi}-Stream output (\texttt{c\_m\_axis\_mm2s\_tdata\_width}~=~8).
+Both the MM2S data path (\texttt{M\_AXI\_MM2S}) and the \ac{sg}
+descriptor path (\texttt{M\_AXI\_SG}) share \texttt{S\_AXI\_HPC0\_FPD}
+(SAXIGP0) via \texttt{axi\_smc\_data}; SmartConnect arbitrates
+concurrent accesses without isolation between the two traffic classes~\cite{AMD_PG247}.
+
+\leavevmode\par
+\begin{table}[!h]
+  \caption{Vivado block design configuration parameters for PL-01
+           (\texttt{axi\_dma}~v7.1).}
+  \label{tab:ipconfig_pl01}
+  \centering
+  \small
+  \begin{tabular}{l l p{7.5cm}}
+    \hline
+    Parameter & Value & Description \\
+    \hline
+    \texttt{c\_addr\_width}
+      & 32 & 32-bit addressing \\
+    \texttt{c\_include\_mm2s}
+      & 1  & MM2S channel enabled \\
+    \texttt{c\_include\_s2mm}
+      & 0  & S2MM disabled; TX-only design \\
+    \texttt{c\_include\_sg}
+      & 1  & \ac{sg} enabled \\
+    \texttt{c\_include\_mm2s\_sf}
+      & 0  & Store-and-forward disabled; PL-02 backpressure
+             stalls \ac{ddr} read channel \\
+    \texttt{c\_include\_mm2s\_dre}
+      & 0  & Data realignment disabled \\
+    \texttt{c\_m\_axi\_mm2s\_data\_width}
+      & 32 & \ac{axi}-MM \ac{ddr} read bus width (bits) \\
+    \texttt{c\_m\_axis\_mm2s\_tdata\_width}
+      & 8  & \ac{axi}-Stream output to PL-02 (bits) \\
+    \texttt{c\_mm2s\_burst\_size}
+      & 16 & Maximum \ac{axi}-MM burst length (beats) \\
+    \texttt{c\_sg\_length\_width}
+      & 26 & Maximum transfer length $2^{26}$ = 64\,MB \\
+    \texttt{c\_prmry\_is\_aclk\_async}
+      & 0  & Synchronous; single clock domain; no \ac{cdc} \\
+    \texttt{c\_micro\_dma}
+      & 0  & Full \ac{dma} (not micro-\ac{dma}) \\
+    \texttt{c\_enable\_multi\_channel}
+      & 0  & Single-channel mode \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream --- PS-03 via \ac{ddr}:}
+\begin{itemize}
+  \item PS-03 allocates the \ac{sg} BD chain in \ac{ddr}
+        (\texttt{HPC0\_DDR\_LOW} range) and writes \texttt{TAILDESC}
+        to \texttt{S\_AXI\_LITE} to initiate transfer; BD chain layout
+        and ring-vs-linear topology are owned by PS-03.
+  \item \ac{ddr} addresses are assigned by Vivado at block design
+        elaboration; PS-03 derives them from the exported \texttt{.xsa}
+        after each rebuild and does not hardcode them.
+  \item Concurrent \ac{sg} descriptor fetches (\texttt{M\_AXI\_SG}) and
+        MM2S data reads (\texttt{M\_AXI\_MM2S}) share
+        \texttt{S\_AXI\_HPC0\_FPD} (SAXIGP0) via
+        \texttt{axi\_smc\_data}; no isolation between \ac{sg} and data
+        traffic.
+\end{itemize}
+
+\textit{Downstream --- PL-02 \texttt{TRANSPORT\_FRAMING}:}
+\begin{itemize}
+  \item \texttt{M\_AXIS\_MM2S} delivers one byte per clock at 250\,MHz
+        when data is available; \texttt{tvalid} de-asserts during
+        inter-BD gaps while the engine fetches the next descriptor.
+  \item \texttt{TLAST} is asserted at the end of each BD transfer;
+        \texttt{TKEEP} is always asserted (8-bit bus, no partial bytes).
+        Neither signal is connected to the PL-02 slave port; both are
+        left as undriven outputs in the block design.
+  \item PL-02 must hold \texttt{tready}; backpressure stalls the
+        \texttt{M\_AXI\_MM2S} \ac{ddr} read channel directly.
+  \item \texttt{mm2s\_introut} is unconnected; PS-03 polls
+        \texttt{MM2S\_DMASR} for transfer completion.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Verification.}
+
+No standalone testbench exists for \texttt{axi\_dma\_ps\_pl}; the core
+is a Xilinx catalog \ac{ip} whose internal logic is not accessible for
+\ac{rtl} simulation.
+Hardware validation was performed indirectly through the PL-02 through
+PL-08 integration test: PL-01 served
+as the data source, which passed with
+41{,}520/41{,}520 IQ pairs bit-exact against the \textsc{Matlab}
+reference, confirming correct \ac{mm2s} transfer operation, \ac{sg}
+descriptor handling, and 8-bit \ac{axi}-Stream output to PL-02.
+
+%\clearpage
 
 % ============================================================
 % CH-4.3.2  PL-02: TRANSPORT_FRAMING
