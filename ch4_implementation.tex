@@ -70,12 +70,11 @@
 % ------------------------------------------------------------
 \section{Programmable Logic: TX Chain}
 \label{sec:pl_tx}
-% [NDA-IMPL] — BLOCKED
-% TODO: Section intro requires NDA CLEAR: IMPL [4.3] + handoff
-%   - PL-01 through PL-12 — one subsection each
-%   - PL-10 (SD-FEC LDPC) touches [NDA-ALGO] boundary —
-%     see subsection note below
-%   - PL-12 (IQ Combiner) is [NDA-ALGO] permanently blocked
+
+This section documents the \ac{pl} modules that compose the
+J.83B Annex~B transmit chain, one subsection per module.
+Each subsection follows the standard template: interface, architecture,
+interface contract, resource utilization, and verification.
 
 % ============================================================
 % CH-4.3.1  PL-01: AXI DMA MM2S
@@ -5982,31 +5981,89 @@ receiver reported \ac{qam256} signal lock at
 
 \clearpage
 % ------------------------------------------------------------
+% ============================================================
+% CH-4.7  CLOCKING SUBSYSTEM
+% Source  : EXT-01_LMK04828_handoff.md v2.1  04-Nov-2026
+%           EXT-02_LMX2594_handoff.md  v2.0  04-Nov-2026
+%           EXT-03_xrfclk_handoff.md   v2.1  04-Nov-2026
+% NDA CLEAR: IMPL [4.7] — received 04-Nov-2026
+% Preflight: CH-4.7 [EXT-01/02/03] — PASS 04-Nov-2026
+%            All images OMITTED — no figures required
+% Expanded : 04-Nov-2026
+% ============================================================
+
 \section{Clocking Subsystem}
 \label{sec:clocking}
-% [NDA-IMPL] — BLOCKED
-% TODO: Section intro requires NDA CLEAR: IMPL [4.7] + handoff
-%   - Clock chip existence may be stated (public component)
-%   - Register settings: NDA-IMPL — no detail without clearance
 
+The \ac{rfdc} \ac{dac} and \ac{adc} tiles require a stable 321.632\,MHz
+reference clock for internal sample-rate \ac{PLL} lock~\cite{AMD_PG269}.
+This reference is produced by a two-stage chain: a TI LMK04828 jitter
+cleaner~\cite{TI_LMK04828} conditions the board crystal reference to
+245.76\,MHz, and a pair of TI LMX2594 \ac{rf} synthesizers~\cite{TI_LMX2594}
+multiply that signal to 321.632\,MHz.
+
+% ------------------------------------------------------------
 \subsection{LMK04828}
 \label{subsec:lmk04828}
-% [NDA-IMPL] — BLOCKED (EXT-01)
-% TODO: Requires NDA CLEAR: IMPL [4.7.1] + handoff
-%   - Clock distribution chip — register configuration: NDA-IMPL
 
+The LMK04828 is a dual-loop \ac{PLL} clock jitter cleaner mounted on the
+\ac{rfsoc}~4x2 board~\cite{RealDigital_A6}.
+It accepts a 10\,MHz low-voltage differential signaling (LVDS) 
+reference from the board's Si5395B crystal
+oscillator and delivers a 245.76\,MHz differential clock on \texttt{OUT0}
+to the \ac{adc} synthesizer and on \texttt{OUT4} to the \ac{dac}
+synthesizer~\cite{TI_LMK04828}.
+The ANSpect design uses the Xilinx/RealDigital default
+\texttt{LMK04828\_245.76.txt} \ac{tics} register file without modification.
+
+% ------------------------------------------------------------
 \subsection{LMX2594}
 \label{subsec:lmx2594}
-% [NDA-IMPL] — BLOCKED (EXT-02)
-% TODO: Requires NDA CLEAR: IMPL [4.7.2] + handoff
-%   - PLL/VCO chip — register configuration: NDA-IMPL
 
-\subsection{xrfclk API}
+Two LMX2594 wideband \ac{rf} synthesizers generate the 321.632\,MHz
+reference~\cite{TI_LMX2594}: PLL2 (DAC) feeds \ac{rfdc}-01 DAC\_B
+Tile~228 and PLL1 (ADC) feeds \ac{rfdc}-02 ADC\_D Tile~224.
+Both devices share the same custom \ac{tics} configuration
+(\texttt{LMX2594\_321.632.txt}), generated with \ac{tics} Pro targeting
+a 321.632\,MHz output from the 245.76\,MHz LMK04828 reference;
+the output frequency follows from \ac{PLL} multiplication to
+$F_\text{vco} = 7{,}719.168$\,MHz and a channel divider
+$\text{CHDIV} = 24$, giving
+$F_\text{out} = 7{,}719.168 / 24 = 321.632$\,MHz~\cite{TI_LMX2594}.
+
+% ------------------------------------------------------------
+\subsection{\texttt{xrfclk} API}
 \label{subsec:xrfclk}
-% [NDA-IMPL] — BLOCKED (EXT-03)
-% TODO: Requires NDA CLEAR: IMPL [4.7.3] + handoff
-%   - Xilinx xrfclk Python API — usage detail: NDA-IMPL
-\clearpage  
+
+\texttt{xrfclk} is the \ac{pynq} Python package that programs the
+LMK04828 and both LMX2594 devices over the \ac{ps} \ac{spi} bus at
+boot~\cite{xrfclk}.
+The ANSpect initialization sequence is:
+
+\begin{verbatim}
+xrfclk.set_ref_clks(lmk_freq=245.76, lmx_freq=321.632)
+time.sleep(2.0)
+ol = Overlay("xyz.bit")
+\end{verbatim}
+
+The 2\,s sleep provides \ac{PLL} lock acquisition margin; loading the
+\ac{pl} bitstream before the sleep elapses prevents the \ac{rfdc} tiles
+from acquiring lock and must be avoided~\cite{xrfclk}.
+
+\paragraph{Verification.}
+
+Clock chain lock was confirmed at two levels.
+At the hardware level, the \ac{rfsoc}~4x2 board provides four dedicated
+lock-status \acp{led}: \texttt{STAT1} and \texttt{STAT2} indicate LMK04828
+\ac{PLL}1 and \ac{PLL}2 lock, and the DAC and ADC \acp{led} indicate
+LMX2594 PLL2 and PLL1 lock respectively~\cite{RealDigital_A6}.
+All four assert green on completion of \texttt{set\_ref\_clks()},
+confirming that the full two-stage clock chain is locked before
+\texttt{Overlay()} is called.
+At the system level, correct clock operation was confirmed by the \ac{rfdc}
+passthrough isolation test described in Section~\ref{subsec:dac_tile228},
+in which the HDHomeRun consumer receiver reported \texttt{lock=qam256}
+at 177MHz center frequency.
 % ------------------------------------------------------------
 \section{Test and Measurement}
 \label{sec:test_measurement}
