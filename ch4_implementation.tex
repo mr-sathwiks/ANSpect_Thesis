@@ -4162,10 +4162,498 @@ Post-implementation timing at the 250\,MHz constraint confirms
 $F_{\max} \approx 325$\,MHz with no failing
 endpoints~(Table~\ref{tab:pl08_timing}).
 
-\subsection{PL-09: SRRC FIR TX}
+% ============================================================
+% CH-4.3.9  PL-09: SRRC_FIR_TX
+% Source   : PL-09_SRRC_FIR_TX_handoff_v3.0.md  03-Nov-2026
+%            ANSpect_PL08_PL09_Quantization_Summary.md  10-Sep-2026
+% NDA CLEAR: IMPL [4.3] — received prior session
+% Preflight: CH-4.3.9 [PL-09] PASS  03-Nov-2026
+%            IMG-1 [x]  IMG-2 [x]  IMG-3 [x]
+% Template : CARRY_FORWARD.md §1–§8 v1.2 (Xilinx IP exception)
+%            §4 FSM — OMITTED (Xilinx IP, no custom state machine)
+%            §5 → Filter Coefficients (.coe)
+% HW status: HW-PASS — 100% match to MATLAB Fix51_49 golden vectors
+% Co-dep   : Fix51_49 format contract defined here (AUTHORITATIVE)
+%            tab:pl09_fix51 is the defining instance
+%            PL-08 §6 forward-refs \ref{subsec:pl09} — do not alter
+% ============================================================
+
+\subsection{PL-09: SRRC Pulse Shaping Filter}
 \label{subsec:pl09}
-% [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.3.9] + handoff for PL-09
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+The \ac{srrc} pulse shaping filter (PL-09) implements the J.83B Annex~B
+interpolation stage, band-limiting each \ac{qam256} baseband symbol from
+the constellation mapper to the 6\,MHz downstream cable channel.
+The \ac{dsp} background for this stage---raised-cosine filter theory,
+roll-off factor selection, and spectral containment requirements---is
+presented in Section~\ref{sec:srrc}; this section covers
+its hardware realization.
+PL-09 is instantiated as a Xilinx \ac{fir} Compiler v7.2 \ac{ip} core~\cite{AMD_PG149}
+(no handwritten SystemVerilog). Figure~\ref{fig:pl09_pipeline} shows 
+the pipeline position of PL-09 in the transmit chain.
+
+% [ALT: Block diagram showing the pipeline from left to right:
+%       PL-08 QAM256_MAP (purple) feeds a 128-bit bus to the
+%       iq_packer_pl08_to_pl09 (grey), which outputs a 112-bit bus
+%       into PL-09 SRRC_FIR_TX (green, highlighted). PL-09 outputs a
+%       32-bit bus to a CDC FIFO write-side (orange), bridging to the
+%       32.1632 MHz DAC clock domain on the FIFO read-side, then into
+%       RFDC-01 DAC_B Tile228 (purple). Lower-left label: 250 MHz PL
+%       fabric clock. Lower-right label: 32.1632 MHz RFDC DAC clock.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{figures/ch4/ch4_pl09_pipeline}
+  \caption{Pipeline position of PL-09 \texttt{SRRC\_FIR\_TX} in the
+           J.83B transmit chain. The \texttt{iq\_packer\_pl08\_to\_pl09}
+           module adapts the 128-bit upstream bus to the 112-bit
+           \ac{fir} \ac{ip} input format. A \ac{cdc} \ac{fifo} downstream
+           bridges the 250\,MHz \ac{pl} clock to the 32.163\,MHz
+           \ac{rfdc} \ac{dac} sample clock.}
+  \label{fig:pl09_pipeline}
+\end{figure}
+
+% ------------------------------------------------------------------
+% §2  INTERFACE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface.}
+
+Figure~\ref{fig:pl09_ip_block} shows the packaged \texttt{srrc\_fir\_tx}
+core in Vivado \ac{ip} Integrator.
+The slave interface (\texttt{S\_AXIS\_DATA}) carries the 112-bit input
+word from the packer; the master interface (\texttt{M\_AXIS\_DATA})
+delivers the 32-bit Fix16\_0 interpolated output to the \ac{cdc}
+\ac{fifo}. Active-low synchronous reset (\texttt{aresetn}) clears the internal
+delay line.
+
+% [ALT: Vivado IP Integrator block view of srrc_fir_tx. Left-side
+%       inputs: S_AXIS_DATA group (tdata[111:0], tlast, tready output,
+%       tvalid), aresetn, aclk. Right-side outputs: M_AXIS_DATA group
+%       (tdata[31:0], tlast, tready input, tvalid). Block label:
+%       FIR Compiler v7.2.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl09_ip_block}
+  \caption{Vivado \ac{ip} Integrator view of the \texttt{srrc\_fir\_tx}
+           \ac{fir} Compiler v7.2 core (PL-09).}
+  \label{fig:pl09_ip_block}
+\end{figure}
+
+\FloatBarrier
+
+\begin{table}[htbp]
+  \caption{PL-09 \texttt{srrc\_fir\_tx} port list.}
+  \label{tab:pl09_ports}
+  \centering
+  \small
+  \begin{tabular}{llcp{2.5cm}p{5.5cm}}
+    \hline
+    Port & Dir & Width & Protocol & Description \\
+    \hline
+    \texttt{aclk}
+      & in & 1 & Clock
+      & 250\,MHz \ac{pl} fabric clock \\[2pt]
+    \texttt{aresetn}
+      & in & 1 & Reset
+      & Active-low synchronous reset; clears internal delay line \\[2pt]
+    \texttt{S\_AXIS\_DATA\_tdata}
+      & in & 112 & \ac{axi}-Stream S
+      & \texttt{\{5'b0, Q\_fix51[50:0], 5'b0, I\_fix51[50:0]\}} \\[2pt]
+    \texttt{S\_AXIS\_DATA\_tvalid}
+      & in & 1 & \ac{axi}-Stream S
+      & Input valid \\[2pt]
+    \texttt{S\_AXIS\_DATA\_tready}
+      & out & 1 & \ac{axi}-Stream S
+      & Backpressure; deasserts between inputs \\[2pt]
+    \texttt{S\_AXIS\_DATA\_tlast}
+      & in & 1 & \ac{axi}-Stream S
+      & Packet framing passthrough \\[2pt]
+    \texttt{M\_AXIS\_DATA\_tdata}
+      & out & 32 & \ac{axi}-Stream M
+      & \texttt{\{Q\_fix16[31:16], I\_fix16[15:0]\}} \\[2pt]
+    \texttt{M\_AXIS\_DATA\_tvalid}
+      & out & 1 & \ac{axi}-Stream M
+      & Output valid; continuous after 25-cycle startup \\[2pt]
+    \texttt{M\_AXIS\_DATA\_tready}
+      & in & 1 & \ac{axi}-Stream M
+      & Downstream must assert continuously \\[2pt]
+    \texttt{M\_AXIS\_DATA\_tlast}
+      & out & 1 & \ac{axi}-Stream M
+      & Passthrough \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  IP CONFIGURATION
+%     Xilinx IP exception: replaces §3 RTL Architecture
+%     This section is AUTHORITATIVE for the Fix51_49 format contract.
+%     PL-08 §6 and tab:pl08_fix51 forward-reference \ref{subsec:pl09}.
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{IP Configuration.}
+
+Figure~\ref{fig:pl09_packer} shows the \texttt{tdata} bus structure
+across the PL-08--to--PL-09 boundary.
+The \ac{fir} Compiler \ac{ip} requires a 112-bit input layout with
+5-bit zero padding inserted between the I and Q paths;
+the intermediate packer module \path{iq_packer_pl08_to_pl09.v}
+extracts the 51-bit Fix51\_49 I and Q fields from PL-08's 128-bit output and inserts
+the required padding before presenting the word to the \ac{ip}.
+At the output, the \ac{ip} delivers two Fix16\_0 16-bit values packed
+into a 32-bit word with I in the lower half and Q in the upper half.
+
+% [ALT: Three-panel data format diagram. Top panel labeled PL-08
+%       output (128-bit): fields [127:102]=26-bit zero pad (white),
+%       [101:51]=Q_fix51 (yellow), [50:0]=I_fix51 (yellow).
+%       Middle panel labeled PL-09 FIR IP input (112-bit): fields
+%       [111:107]=5-bit zero pad (white), [106:56]=Q_fix51 PATH_1
+%       (purple), [55:51]=5-bit zero pad (white), [50:0]=I_fix51
+%       PATH_0 (purple). Right panel labeled PL-09 FIR IP output
+%       (32-bit): [31:16]=Q_fix16 (red), [15:0]=I_fix16 (red).]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.40\linewidth]{figures/ch4/ch4_pl09_packer}
+  \caption{\texttt{tdata} bus layout across the PL-08 to PL-09 boundary.
+           \texttt{iq\_packer\_pl08\_to\_pl09.v} remaps the 128-bit upstream
+           word to the 112-bit \ac{fir} \ac{ip} input format, inserting
+           5-bit zero padding between the I and Q Fix51\_49 paths.
+           The \ac{ip} output packs Fix16\_0 I (bits~[15:0]) and Q
+           (bits~[31:16]) into a 32-bit word.}
+  \label{fig:pl09_packer}
+\end{figure}
+
+\FloatBarrier
+
+Table~\ref{tab:pl09_config} lists the full \ac{fir} Compiler configuration.
+Three hardware design decisions shaped these parameters.
+
+\textit{Fix51\_49 input format.}
+The \ac{fir} Compiler's input width ceiling is 51~bits when the
+coefficient width is set to 35~bits or fewer (Table~\ref{tab:pl09_config}).
+The input format was data-driven from the governing maximum
+amplitude of all 256 constellation points:
+$\max|\text{IQ}| = 1.150447483271056$
+(deterministic quantity — independent of packet count~\cite{ITU_J83}).
+Applying $\lceil\log_2(\max|\text{IQ}|)\rceil + 1 = 2$ integer bits and
+$51 - 2 = 49$ fractional bits fills the available \ac{ip} input ceiling
+with no unused precision; a naive formula ($\lceil\log_2(\max+1)\rceil + 1$)
+over-inflates the integer field by one bit when \texttt{max} lies just
+above a power-of-two boundary, wasting one fractional bit.
+Table~\ref{tab:pl09_fix51} defines the resulting Fix51\_49 format and
+constitutes the authoritative contract for the upstream constellation
+mapper (PL-08, Section~\ref{subsec:pl08}).
+
+\textit{Integer Coefficients mode.}
+The \ac{ip} restricts fractional coefficient bits to at most~3 for
+coefficient widths in the 33--35~bit range~\cite{AMD_PG149}.
+The \ac{srrc} center tap $\max|h| = 0.422$ requires approximately
+34~fractional bits to represent faithfully; Fix35\_3 gives an \ac{lsb}
+of $2^{-3} = 0.125$, which rounds the center tap to 0.375 or 0.5
+and invalidates the passband response.
+Integer Coefficients mode was therefore selected: the coefficients are
+pre-scaled to Fix35\_0 integers in MATLAB before loading into the \ac{ip}
+via the \texttt{.coe} file (Table~\ref{tab:pl09_coeff}).
+
+\begin{table}[htbp]
+  \caption{Xilinx \ac{fir} Compiler v7.2 configuration --- PL-09
+           \ac{srrc} pulse shaping filter.}
+  \label{tab:pl09_config}
+  \centering
+  \small
+  \begin{tabular}{lp{4.2cm}p{5.0cm}}
+    \hline
+    Parameter & Value & Notes \\
+    \hline
+    Filter type
+      & Interpolation
+      & J.83B \S\,B.5.5.5 pulse shaping \\[2pt]
+    Interpolation rate
+      & 6
+      & Samples per symbol \\[2pt]
+    Coefficient structure
+      & Non-Symmetric
+      & Symmetric rejected --- startup artifact \\[2pt]
+    Number of taps
+      & 121 (calculated: 126)
+      & $\alpha = 0.12$, span~$= 20$, sps~$= 6$ \\[2pt]
+    Number of paths
+      & 2
+      & PATH\_0 $=$ I; PATH\_1 $=$ Q \\[2pt]
+    Input data width
+      & 51
+      & Fix51\_49 --- data-driven derivation \\[2pt]
+    Input fractional bits
+      & 49
+      & See Table~\ref{tab:pl09_fix51} \\[2pt]
+    Coefficient width
+      & 35
+      & Fix35\_0, fill-range scaled \\[2pt]
+    Coefficient frac.\ bits
+      & 0
+      & Integer\_Coefficients mode (\ac{ip} constraint) \\[2pt]
+    Quantization mode
+      & Integer\_Coefficients
+      & Avoids \ac{ip} re-quantization of .coe data \\[2pt]
+    Filter architecture
+      & Systolic \ac{mac}
+      & \ac{dsp} slice array \\[2pt]
+    Accumulator
+      & Fix87\_49
+      & $A_w = 51 + 36 = 87$~bits (PG149 Formula~2~\cite{AMD_PG149}) \\[2pt]
+    Output width
+      & 16
+      & Fix16\_0; \ac{crte} internal to \ac{ip} \\[2pt]
+    Rounding mode
+      & Convergent to Even (\ac{crte})
+      & Fix87\_49~$\to$~Fix16\_0 inside \ac{ip} \\[2pt]
+    Cycle latency
+      & 25~cycles
+      & After reset release; steady-state continuous \\[2pt]
+    Clock frequency
+      & 250\,MHz
+      & \ac{pl} fabric clock \\[2pt]
+    Sample frequency
+      & 5.360\,537\,MHz
+      & Input symbol rate \\[2pt]
+    Input \ac{fifo}
+      & Enabled
+      & \texttt{S\_DATA\_HAS\_FIFO = true} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \caption{Fix51\_49 signed fixed-point format for \ac{fir} input data
+           (\texttt{fi(val,\,1,\,51,\,49)}, no scale factor).}
+  \label{tab:pl09_fix51}
+  \centering
+  \small
+  \begin{tabular}{llll}
+    \hline
+    Field & Bit position & Width & Description \\
+    \hline
+    Sign     & {[50]}   & 1  & Two's complement sign bit \\[2pt]
+    Integer  & {[49]}   & 1  & Integer magnitude bit \\[2pt]
+    Fraction & {[48:0]} & 49 & Fractional bits \\
+    \hline
+    Total    & {[50:0]} & 51 & \texttt{fi(val,\,1,\,51,\,49)}, no scale \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    Format derived from governing $\max|\text{IQ}| = 1.150447483271056$
+    (complete \ac{qam256} constellation --- deterministic, independent of packet
+    count): $\lceil\log_2(1.1504)\rceil + 1 = 2$ integer bits;
+    $51 - 2 = 49$ fractional bits.
+    \ac{lsb}~$= 2^{-49} = 1.776\times10^{-15}$;
+    maximum quantization error $8.882\times10^{-16} < 0.5\times\text{\ac{lsb}}$~\cite{ITU_J83}.
+    The upstream \ac{qam256} mapper~(PL-08, Section~\ref{subsec:pl08})
+    produces samples in this format.
+  \end{minipage}
+\end{table}
+
+% ------------------------------------------------------------------
+% §4  FSM — OMITTED (Xilinx IP — no custom state machine)
+%     Per CARRY_FORWARD.md Xilinx IP exception, §4 is omitted entirely.
+% ------------------------------------------------------------------
+
+% ------------------------------------------------------------------
+% §5  FILTER COEFFICIENTS
+%     Xilinx IP exception: replaces §5 Memory Resources
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Filter Coefficients.}
+
+The 121 \ac{srrc} filter coefficients are pre-quantized offline and loaded into the
+\ac{fir} Compiler \ac{ip} via \path{srrc_pl09_fix35_0.coe}.
+Fill-range scaling $S_\text{coeff} = \lfloor (2^{34} - 2) / \max|h| \rfloor$
+achieves 100\% utilization of the signed 35-bit coefficient range; the \ac{ip} receives
+pre-scaled Fix35\_0 integers and operates on them directly.
+Table~\ref{tab:pl09_coeff} summarizes the coefficient file parameters.
+
+\begin{table}[htbp]
+  \caption{PL-09 \ac{srrc} filter coefficient file ---
+           \texttt{srrc\_pl09\_fix35\_0.coe}.}
+  \label{tab:pl09_coeff}
+  \centering
+  \small
+  \begin{tabular}{lp{4.4cm}p{6.4cm}}
+    \hline
+    Parameter & Value & Notes \\
+    \hline
+    Tap count
+      & 121 (Non-Symmetric)
+      & All taps stored \\[2pt]
+    Coefficient format
+      & Fix35\_0 integers
+      & Integer\_Coefficients mode \\[2pt]
+    Scale $S_\text{coeff}$
+      & 40{,}743{,}144{,}486
+      & $\lfloor(2^{34}-2)/\max|h|\rfloor$
+      \\[2pt]
+    $\max|h|$ (fp64)
+      & 0.421\,662\,819\,562\,141
+      & \texttt{rcosdesign(0.12,\,20,\,6,\,`sqrt')}~\cite{ITU_J83} \\[2pt]
+    $\max|h_\text{int}|$
+      & 17{,}179{,}869{,}183
+      & $\leq 2^{34} - 1$ --- fit \textsc{pass} \\[2pt]
+    Range utilization
+      & 100\%
+      & Full 35-bit signed range used \\[2pt]
+    Tap symmetry
+      & asymmetry $= 0$
+      & \ac{srrc} symmetry verified \\[2pt]
+    Max quant.\ error
+      & $1.202\times10^{-11}$
+      & $< 0.5 \times \text{\ac{lsb}}$ --- \textsc{pass} \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream} ($\leftarrow$ PL-08 \texttt{QAM256\_MAP}
+via \path{iq_packer_pl08_to_pl09.v}):
+\begin{itemize}
+  \item PL-08 delivers Fix51\_49 \ac{iq} samples on a 128-bit \ac{axi}-Stream
+        bus; \path{iq_packer_pl08_to_pl09.v} remaps the word to the 112-bit
+        \ac{fir} \ac{ip} input format (Figure~\ref{fig:pl09_packer}),
+        adding one cycle of pipeline latency; \texttt{tready} is a
+        combinational passthrough from the \ac{ip}.
+  \item The \ac{ip} sees Fix51\_49 signed integers at
+        \texttt{s\_tdata[50:0]} \texttt{PATH\_0~$=$~I} and
+        \texttt{s\_tdata[106:56]} \texttt{PATH\_1~$=$~Q} with no external scale
+        factor; $\max|\text{IQ}|$ is bounded by the \ac{qam256}
+        constellation table (Section~\ref{subsec:pl08}).
+  \item \texttt{s\_tready} deasserts between inputs (Systolic \ac{mac} is
+        rate-limited at $250 / 5.361$\,MHz~$\approx 46.6$ cycles per input);
+        upstream must hold \texttt{tdata} and \texttt{tvalid} stable while
+        \texttt{s\_tready}~$= 0$.
+  \item \texttt{S\_DATA\_HAS\_FIFO = true}: the \ac{ip}'s internal input
+        \ac{fifo} buffers transactions and reduces upstream stall sensitivity.
+\end{itemize}
+
+\textit{Downstream} ($\rightarrow$ \ac{rfdc}-01 \ac{dac} Tile~228
+via \ac{cdc} \ac{fifo}):
+\begin{itemize}
+  \item Delivers Fix16\_0 signed 16-bit \ac{iq} samples on a 32-bit
+        \ac{axi}-Stream bus: I in \texttt{tdata[15:0]},
+        Q in \texttt{tdata[31:16]}.
+  \item \ac{crte} truncation Fix87\_49~$\to$~Fix16\_0 is performed entirely
+        inside the \ac{ip}; no external quantization block is required~\cite{AMD_PG149}.
+  \item Output rate: $5.360\,537 \times 6 = 32.163$\,MSamp/s;
+        \texttt{m\_tvalid} is asserted continuously once the pipeline fills
+        after the 25-cycle startup.
+  \item Downstream (\ac{cdc} \ac{fifo}) must assert \texttt{m\_tready}
+        continuously.
+  \item The \texttt{tlast} port is present for \ac{dma} loopback framing;
+        in the production chain PL-09~$\to$~\ac{rfdc}-01, neither the
+        \ac{fir} computation nor the \ac{rfdc} \ac{dac} tile depends on
+        \texttt{tlast}.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §7  RESOURCE UTILIZATION & TIMING
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Resource Utilization and Timing.}
+
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-09 post-implementation resource utilization
+           (\ac{rfsoc}~4x2, Vivado 2024.2, 03-Nov-2026).}
+  \label{tab:pl09_resources}
+  \centering
+  \begin{tabular}{lrrl}
+    \hline
+    Resource & Used & Available & Utilization \\
+    \hline
+    \ac{lut} (Logic) &     221 & 425{,}280 & 0.05\% \\[2pt]
+    \ac{lut} (SRL)   &     368 & 213{,}600 & 0.17\% \\[2pt]
+    \ac{lut} (Total) &     589 & 425{,}280 & 0.14\% \\[2pt]
+    \ac{ff}          & 1{,}859 & 850{,}560 & 0.22\% \\[2pt]
+    \ac{bram}        &       0 & 1{,}080   & 0.00\% \\[2pt]
+    \ac{dsp}         &      30 & 4{,}272   & 0.70\% \\[2pt]
+    UltraRAM         &       0 & 80        & 0.00\% \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    \ac{dsp}~$= 30$: Non-Symmetric structure stores all 121~taps, requiring
+    30~multipliers in the Systolic \ac{mac} array.
+    \ac{lut} SRL~$= 368$: Vivado~2024.2 infers the 121-tap $\times$ 2-path
+    delay line as shift-register \acp{lut}.
+    \ac{bram}~$= 0$: Fix16\_0 output \ac{crte} is internal to the \ac{ip};
+    no output-buffer \ac{bram} is required.
+  \end{minipage}
+\end{table}
+
+\leavevmode\par
+\begin{table}[!h]
+  \caption{PL-09 post-implementation timing summary at 250\,MHz constraint
+           (Vivado 2024.2, \texttt{xczu48dr-ffvg1517-2-e}, 03-Nov-2026).}
+  \label{tab:pl09_timing}
+  \centering
+  \begin{tabular}{lrl}
+    \hline
+    Metric & Value & Notes \\
+    \hline
+    Target clock period & 4.000\,ns    & 250\,MHz \\[2pt]
+    WNS                 & $+0.861$\,ns & Positive --- timing met \\[2pt]
+    WHS                 & $+0.011$\,ns & Marginal --- passes \\[2pt]
+    Est.\ $F_{\max}$    & 318.6\,MHz   & $(4.000 - 0.861)^{-1}$ \\[2pt]
+    Failing paths       & 0 / 10{,}680 & All paths closed \\
+    \hline
+  \end{tabular}\\[4pt]
+  \begin{minipage}{\linewidth}
+    \small
+    WNS~$= +0.861$\,ns confirms the 250\,MHz constraint is met with
+    $F_{\max} \approx 318.6$\,MHz.
+    WHS~$= +0.011$\,ns is marginal but passes; all 10{,}680 paths
+    closed on the \texttt{xczu48dr-ffvg1517-2-e} device.
+  \end{minipage}
+\end{table}
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Verification.}
+
+\textit{Simulation.}
+No standalone simulation testbench was developed for PL-09;
+the Xilinx \ac{fir} Compiler \ac{ip} was validated directly on the
+\ac{rfsoc}~4x2 board using \ac{pynq} \ac{dma} loopback.
+
+\textit{Hardware.}
+The module was exercised in a standalone loopback block design
+at 250\,MHz using \ac{axi} \ac{dma} transfers
+on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
+Fix51\_49 input vectors were generated by
+ANSpect MATLAB scripts from the fp64
+stage-7 constellation source files; the Fix16\_0 output stream was
+compared against the MATLAB floating-point reference.
+100\% of the generated Fix51\_49 golden vectors matched the MATLAB
+reference at the Fix16\_0 output boundary, confirming the \ac{fir}
+\ac{ip} configuration, coefficient file (\path{srrc_pl09_fix35_0.coe}),
+and \ac{crte} output quantization on silicon.
+
+\clearpage
 
 \subsection{PL-10: SD-FEC LDPC}
 \label{subsec:pl10}
