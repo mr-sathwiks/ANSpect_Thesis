@@ -56,11 +56,223 @@
 \label{subsec:ps_udp_rx}
 % [NDA-IMPL] — BLOCKED (PS-01)
 % TODO: Requires NDA CLEAR: IMPL [4.2.1] + handoff for PS-01
+This section will be removed.
+
+% ============================================================
+% CH-4.2.2  PS-02: j83b_tx_chain()
+% Source : PS-02_j83b_tx_chain_handoff_v2.0.md  04-Nov-2026
+% NDA CLEAR: IMPL [4.2] — received 05-Nov-2026
+% Preflight : CH-4.2.2 [PS-02] — PASS  05-Nov-2026
+%   IMG-1 [x]  ch4_ps02_boot_sequence.png
+%   Boot timing OMITTED — not thesis content
+%   Resource/Timing N/A — software module
+% Expanded  : 05-Nov-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2 (software module)
+%   §4 FSM OMITTED — sequential Python, no hardware FSM
+%   §5 Memory OMITTED — no ROM/BRAM
+%   §7 Utilization/Timing OMITTED — PS software, no PL fabric resources
+% ============================================================
 
 \subsection{TX Chain}
 \label{subsec:ps_tx_chain}
-% [NDA-IMPL] — BLOCKED (PS-02)
-% TODO: Requires NDA CLEAR: IMPL [4.2.2] + handoff for PS-02
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+\texttt{j83b\_tx\_chain} (PS-02) is a \ac{pynq} notebook
+initialization sequence executed on the \ac{arm} Cortex-A53
+\ac{ps}~\cite{PYNQ_DOC}, performing \ac{rf} clock bring-up,
+overlay load, \ac{rfdc} tile validation, PL-11 register
+initialization, and \ac{ddr} transmit buffer allocation before
+handing off to PS-03.
+
+% ------------------------------------------------------------------
+% §2  Inputs and Outputs
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Inputs and Outputs.}
+\leavevmode\par
+
+\begin{table}[!h]
+  \caption{PS-02 \texttt{j83b\_tx\_chain()} inputs and outputs.}
+  \label{tab:ps02_signals}
+  \centering
+  \small
+  \begin{tabular}{l l p{3.2cm} p{7cm}}
+    \hline
+    Signal & Dir & Type & Description \\
+    \hline
+    \path{stage0_input.bin}
+      & in & Filesystem
+      & \ac{mpegts} binary input; 188-byte packets;
+        \texttt{byte[0]~=~0x47}; notebook working directory \\[2pt]
+    \texttt{overlay bitfile}
+      & in & Filesystem
+      & Vivado bitstream; name varies per build;
+        \texttt{.bit} and \texttt{.hwh} must be co-located \\[2pt]
+    \texttt{rfdc}
+      & in & \texttt{xrfdc.RFdc}
+      & \ac{rfdc} \ac{ip} driver from \texttt{Overlay};
+        tile status check and \ac{nco} enforce \\[2pt]
+    \texttt{axi\_dma\_ps\_pl}
+      & in & \texttt{pynq.lib.dma.DMA}
+      & \ac{axi} \ac{dma} \ac{ip} object from \texttt{Overlay};
+        passed to PS-03 for \ac{sg} \ac{mm2s} kick \\[2pt]
+    \texttt{anspect\_ctrl\_regs}
+      & in & \texttt{pynq.overlay} \texttt{.DefaultIP}
+      & PL-11 register file \ac{ip} object; \ac{mmio} write to
+        \texttt{FRAME\_SYNC\_CW}; base address
+        \texttt{VERIFY-ON-REBUILD} \\[2pt]
+    \texttt{data\_buf}
+      & out & \texttt{pynq.buffer}
+      & Contiguous \ac{ddr} buffer (\texttt{np.uint8},
+        cacheable, flushed); \texttt{device\_address}
+        + \texttt{len} delivered to PS-03 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  BOOT SEQUENCE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Boot Sequence.}
+
+Boot sequence steps followed are as per Figure~\ref{fig:ps02_boot}.
+
+% [ALT: Flowchart of the PS-02 j83b_tx_chain() ten-step boot
+%       sequence. START oval at top. Step 1 RF Clock Init
+%       LMK04828 + LMX2594 rectangle; Step 2 Clock Settle 2 s
+%       rectangle; Step 3 Load PYNQ Overlay rectangle arranged
+%       left to right with a dashed note box RF clocks must
+%       precede bitstream load. Steps 4 IP Inventory Check and
+%       Step 5 PL-11 Register Init FRAME_SYNC_CW = 0x0
+%       rectangles follow. DAC Tile Ready? diamond branches No
+%       to HALT oval, Yes to NCO Frequency Correct? diamond;
+%       No branch leads to Enforce NCO = 177.0 MHz rectangle
+%       which rejoins the Yes path. Step 8 Load MPEG-TS Input
+%       parallelogram, Step 9 Allocate DDR Buffer rectangle,
+%       Step 10 Handoff to PS-03 parallelogram, and END oval
+%       complete the flow.]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.50\linewidth]{figures/ch4/ch4_ps02_boot_sequence}
+  \caption{PS-02 \texttt{j83b\_tx\_chain()} ten-step boot sequence.
+           Steps~1--3 ordering is mandatory: \ac{rf} clocks must be
+           programmed before the bitstream is loaded or the
+           LMX2594 \acp{PLL} will not acquire
+           lock~\cite{xrfclk,TI_LMX2594}.}
+  \label{fig:ps02_boot}
+\end{figure}
+\FloatBarrier
+
+\textit{Steps 1--3 ordering.}
+\texttt{xrfclk.set\_ref\_clks()} programs the LMK04828 and both
+LMX2594 devices over \ac{spi} before \texttt{Overlay()} loads
+the bitstream~\cite{xrfclk}.
+Loading the bitstream first resets the \ac{rfdc} tile \acp{PLL}
+and prevents lock acquisition; the 2\,s sleep in Step~2 covers
+both \ac{PLL} stages, with on-board \acp{led} confirming lock
+before execution continues.
+
+\textit{Step 5 --- \texttt{FRAME\_SYNC\_CW} write.}
+\texttt{FRAME\_SYNC\_CW} at PL-11 offset \texttt{0x20} is written and
+readback-verified before the \ac{dma} channel is enabled.
+A write during the active DATA phase of PL-06 propagates to the
+in-flight frame trailer within one clock cycle
+(Section~\ref{subsec:pl11}); boot-sequence ordering eliminates
+this race.
+
+\textit{Steps 6--7 --- tile check and \ac{nco} enforce.}
+\texttt{TileState}~$< 15$ indicates a design fault --- misconfigured
+overlay or clock failure --- and halts execution with no runtime
+recovery path.
+Steps~1--3 must be verified before re-attempting.
+The \ac{nco} enforce step reads back DAC~B Tile~228
+\texttt{MixerSettings} and corrects the frequency to 177.0\,MHz
+if the readback deviates by more than 0.001\,MHz.
+The block design coarse mixer value ($F_s/4$, code~3) is overridden
+to BYPASS (code~16) at this step; the block design default never
+takes effect during operation (Section~\ref{subsec:dac_tile228}).
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream:}
+\begin{itemize}
+  \item Input is sourced from \path{stage0_input.bin} preloaded to
+        the notebook working directory on the board filesystem.
+\end{itemize}
+
+\textit{Downstream ($\rightarrow$ PS-03 \ac{dma} MM2S kick):}
+\begin{itemize}
+  \item \texttt{data\_buf.device\_address}: physical \ac{ddr} base
+        address of the transmit buffer.
+  \item \texttt{len(stage0)}: total byte count; multiple of~188.
+  \item \texttt{data\_buf.flush()} must complete before PS-03 is
+        called.
+  \item \texttt{data\_buf} must remain allocated for the full
+        duration of the \ac{dma} transfer; \texttt{freebuffer()}
+        is called by PS-03 after \ac{dma} halt.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Verification.}
+
+\begin{table}[!h]
+  \caption{PS-02 hardware verification checks.}
+  \label{tab:ps02_checks}
+  \centering
+  \small
+  \begin{tabular}{l p{4.8cm} p{6.4cm}}
+    \hline
+    Check & Description & Pass Criterion \\
+    \hline
+    CHECK-01
+      & \ac{ip} inventory
+      & \texttt{rfdc}, \texttt{axi\_dma\_ps\_pl},
+        \texttt{anspect\_ctrl\_regs} present in
+        \texttt{ol.ip\_dict}; base addresses printed \\[2pt]
+    CHECK-02
+      & \texttt{FRAME\_SYNC\_CW} write
+      & \texttt{(read(0x20)~\&~0xF)~==~0x0} \\[2pt]
+    CHECK-03
+      & \ac{rfdc} tile state
+      & \texttt{DAC Tile0 TileState~==~15} \\[2pt]
+    CHECK-04
+      & \ac{dac} \ac{nco} frequency
+      & \texttt{abs(Freq - 177.0)~<~0.001} \\[2pt]
+    CHECK-05
+      & Input sync byte
+      & \texttt{stage0[0]~==~0x47} \\[2pt]
+    CHECK-06
+      & Input packet alignment
+      & \texttt{len(stage0)~\%~188~==~0} \\[2pt]
+    CHECK-07
+      & \ac{ddr} buffer allocation
+      & \texttt{allocate()} and \texttt{flush()} complete
+        without exception \\
+    \hline
+  \end{tabular}
+\end{table}
+
+No formal testbench exists; verification is performed via notebook
+execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
+All seven checks passed on hardware with \path{stage0_input.bin}
+(276{,}349 packets, 51{,}953{,}612~bytes).
+
+%\clearpage
 
 \subsection{DMA Control}
 \label{subsec:ps_dma_control}
@@ -4662,6 +4874,7 @@ and \ac{crte} output quantization on silicon.
 % TODO: Structural existence may be acknowledged only
 %   - Internal algorithm: hard block, do not draft or paraphrase
 %   - Requires NDA CLEAR: IMPL [4.3.10] for structural frame only
+This section will be removed.
 
 % ============================================================
 % CH-4.3.11  PL-11: anspect_ctrl_regs — AXI-Lite Register File
@@ -4938,6 +5151,7 @@ chain.
 \label{subsec:pl12}
 % [NDA-IMPL] — BLOCKED
 % TODO: Requires NDA CLEAR: IMPL [4.3.12] + handoff for PL-12
+This section will be removed.
 \clearpage  
 % ------------------------------------------------------------
 
