@@ -274,11 +274,208 @@ All seven checks passed on hardware with \path{stage0_input.bin}
 
 %\clearpage
 
+% ============================================================
+% CH-4.2.3  PS-03: DMA MM2S kick
+% Source : PS-03_DMA_MM2S_kick_handoff_v2.1.md  05-Nov-2026
+% NDA CLEAR: IMPL [4.2] — received 05-Nov-2026
+% Preflight : CH-4.2.3 [PS-03] — PASS  05-Nov-2026
+%   IMG-1 OMITTED — single self-referencing BD; prose sufficient
+%   Resource/Timing N/A — software module
+% Expanded  : 05-Nov-2026
+% Template  : CARRY_FORWARD.md §1–§8 v1.2 (software module)
+%   §4 FSM OMITTED — sequential Python, no hardware FSM
+%   §5 Memory OMITTED — no ROM/BRAM
+%   §7 Utilization/Timing OMITTED — PS software, no PL fabric resources
+% ============================================================
+
 \subsection{DMA Control}
 \label{subsec:ps_dma_control}
-% [NDA-IMPL] — BLOCKED (PS-03, PS-05)
-% TODO: Requires NDA CLEAR: IMPL [4.2.3] + handoff for PS-03
-\clearpage  
+
+% ------------------------------------------------------------------
+% §1  OVERVIEW
+% ------------------------------------------------------------------
+
+PS-03 is a \ac{pynq} notebook sequence executed on the \ac{arm}
+Cortex-A53 \ac{ps}~\cite{PYNQ_DOC} that constructs a single
+self-referencing \ac{sg} \ac{bd} in \ac{ddr} and kicks the
+\ac{axi} \ac{dma} \ac{mm2s} channel (PL-01) into cyclic
+operation~\cite{AMD_PG021}.
+BD0 maps the full data buffer (\texttt{SOF=1}, \texttt{EOF=1})
+with \texttt{NXTDESC} pointing to itself; the \ac{dma} engine
+traverses this loop continuously.
+All \ac{dma} register access uses raw \ac{mmio}~\cite{AMD_PG021}.
+
+% ------------------------------------------------------------------
+% §2  INPUTS AND OUTPUTS
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Inputs and Outputs.}
+\leavevmode\par
+
+\begin{table}[!h]
+  \caption{PS-03 DMA MM2S kick inputs and outputs.}
+  \label{tab:ps03_signals}
+  \centering
+  \small
+  \begin{tabular}{l l p{3.2cm} p{6.6cm}}
+    \hline
+    Signal & Dir & Type & Description \\
+    \hline
+    \texttt{data\_buf}
+      & in & \texttt{pynq.buffer}
+      & \ac{ddr} transmit buffer from PS-02;
+        \texttt{np.uint8}, cacheable, flushed;
+        must remain allocated until \ac{dma} stop \\[2pt]
+    \texttt{DATA\_PHYS}
+      & in & \texttt{uint32}
+      & \texttt{data\_buf.device\_address} ---
+        \ac{ddr} physical base address \\[2pt]
+    \texttt{DATA\_LEN}
+      & in & \texttt{int}
+      & Total byte count; multiple of~188;
+        $\leq \texttt{0x3FFFFFF}$ \\[2pt]
+    \texttt{axi\_dma\_ps\_pl}
+      & in & \texttt{pynq.lib.dma.DMA}
+      & \ac{axi} \ac{dma} \ac{ip} object from PS-02;
+        \ac{mmio} access to \ac{dma} registers;
+        base address \texttt{VERIFY-ON-REBUILD} \\[2pt]
+    \texttt{bd\_mem}
+      & local & \texttt{pynq.buffer}
+      & \ac{bd} ring --- 16~$\times$~\texttt{np.uint32},
+        \texttt{cacheable=False};
+        allocated and freed within PS-03 \\[2pt]
+    (cyclic stream)
+      & out & \ac{axi}-Stream
+      & Continuous 8-bit TX stream $\rightarrow$ PL-01
+        $\rightarrow$ PL-02; hardware path only ---
+        no Python object \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+% §3  DMA KICK SEQUENCE
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{DMA Kick Sequence.}
+
+PS-03 validates \texttt{DATA\_LEN} for 188-byte alignment and the
+\ac{sg} 26-bit transfer limit before allocating the \ac{bd} ring.
+\texttt{bd\_mem} is allocated \texttt{cacheable=False}; uncached
+allocation ensures the \ac{dma} engine sees up-to-date \ac{bd}
+content without an explicit flush~\cite{AMD_PG021}.
+
+The kick follows a register write order required by the \ac{axi}
+\ac{dma} \ac{ip}: soft reset, \texttt{MM2S\_CURDESC} written
+while halted, run with \texttt{CyclicBD=1} enabled, then
+\texttt{MM2S\_TAILDESC} written to an out-of-chain address to
+start descriptor fetches~\cite{AMD_PG021}.
+In cyclic mode the engine ignores the \texttt{TAILDESC} pause
+point and cycles the \ac{bd} ring continuously.
+
+\texttt{mm2s\_introut} is unconnected; all status and error
+monitoring is performed by polling
+\texttt{MM2S\_DMASR}~\cite{AMD_PG021}.
+
+% ------------------------------------------------------------------
+% §6  INTERFACE CONTRACT
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Interface Contract.}
+
+\textit{Upstream ($\leftarrow$ PS-02 \texttt{j83b\_tx\_chain()}):}
+\begin{itemize}
+  \item \texttt{data\_buf.device\_address}: physical \ac{ddr} base
+        address of the contiguous transmit buffer.
+  \item \texttt{DATA\_LEN}: total byte count; multiple of~188;
+        $\leq \texttt{0x3FFFFFF}$.
+  \item \texttt{data\_buf.flush()} must have completed before
+        PS-03 is called.
+  \item \texttt{data\_buf} must remain allocated for the full
+        duration of the \ac{dma} transfer; \texttt{freebuffer()}
+        is called by PS-03 after \ac{dma} halt.
+\end{itemize}
+
+\textit{Downstream ($\rightarrow$ PL-01 \ac{axi} \ac{dma} \ac{mm2s}):}
+\begin{itemize}
+  \item PS-03 populates the \ac{bd} chain in \ac{ddr} and
+        initiates transfer via the \texttt{MM2S\_TAILDESC}
+        \ac{axi}-Lite write~\cite{AMD_PG021}.
+  \item Both the \ac{sg} descriptor path (\texttt{M\_AXI\_SG})
+        and the \ac{mm2s} data path (\texttt{M\_AXI\_MM2S})
+        share \texttt{S\_AXI\_HPC0\_FPD} (SAXIGP0) via
+        SmartConnect; no software isolation is
+        required~\cite{AMD_PG247}.
+  \item \ac{ddr} addresses are auto-assigned by Vivado and must
+        be re-derived from \texttt{ip\_dict} or \texttt{.xsa}
+        after every block design rebuild; addresses must not
+        be hardcoded.
+  \item PL-02 asserts \texttt{tready=0} for one cycle at each
+        \ac{mpegts} packet boundary (276{,}349 deassertions per
+        cyclic pass); the \ac{dma} handles this via
+        backpressure with no software action
+        required~\cite{AMD_PG021}.
+\end{itemize}
+
+% ------------------------------------------------------------------
+% §8  VERIFICATION
+% ------------------------------------------------------------------
+
+\FloatBarrier
+\paragraph{Verification.}
+\leavevmode\par
+
+\begin{table}[!h]
+  \caption{PS-03 hardware verification checks.}
+  \label{tab:ps03_checks}
+  \centering
+  \small
+  \begin{tabular}{l p{4.5cm} p{6.4cm}}
+    \hline
+    Check & Description & Pass Criterion \\
+    \hline
+    CHECK-01
+      & Packet alignment
+      & \texttt{DATA\_LEN~\%~188~==~0} \\[2pt]
+    CHECK-02
+      & \ac{sg} length limit
+      & \texttt{DATA\_LEN~<=~0x3FFFFFF} \\[2pt]
+    CHECK-03
+      & \ac{dma} reset complete
+      & \texttt{DMACR[2]} cleared after soft reset \\[2pt]
+    CHECK-04
+      & \ac{dma} running
+      & Post-kick \texttt{Halted~==~0} \\[2pt]
+    CHECK-05
+      & \ac{sg} mode confirmed
+      & Post-kick \texttt{SGIncld~==~1} \\[2pt]
+    CHECK-06
+      & Cyclic active
+      & Post-kick \texttt{Idle~==~0} \\[2pt]
+    CHECK-07
+      & No \ac{dma} errors
+      & \texttt{DMASR}~bits~[10:4]~$=$~\texttt{0x00} \\[2pt]
+    CHECK-08
+      & \ac{pynq} driver cross-check
+      & \texttt{sendchannel.running~==~True};
+        \texttt{sendchannel.idle~==~False} \\[2pt]
+    CHECK-09
+      & Clean stop
+      & \texttt{Halted~==~1} within 15\,s timeout \\
+    \hline
+  \end{tabular}
+\end{table}
+
+No formal testbench exists; verification is performed via notebook
+execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
+All nine checks passed on hardware;
+confirmed \texttt{DMASR}~$=$~\texttt{0x00010008}
+(\texttt{Halted=0}, \texttt{SGIncld=1}, \texttt{Err=0x00}).
+
+%\clearpage 
 % ------------------------------------------------------------
 \section{Programmable Logic: TX Chain}
 \label{sec:pl_tx}
