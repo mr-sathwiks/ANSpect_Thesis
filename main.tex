@@ -36,6 +36,9 @@
 %                    \baselinestretch reset to 1 locally — match LOF/LOT appearance
 %                    \footnotesize applied locally — visual consistency with LOF/LOT
 %                    No setspace pkg — UTD compliant
+% v1.8  08-Nov-2026  Added tightemize environment — compact itemize for CH-4
+%                    module lists; suppresses utdthesis doublespacing bleed-through
+%                    in \begin{itemize} blocks. No setspace pkg — UTD compliant.
 % ============================================================
 
 \documentclass[doublespacing]{utdthesis}
@@ -69,6 +72,18 @@
 \setlength{\belowdisplayskip}{8pt plus 2pt minus 2pt}
 \setlength{\abovedisplayshortskip}{4pt plus 2pt}
 \setlength{\belowdisplayshortskip}{4pt plus 2pt}
+
+% tightemize — compact itemize for CH-4 module lists
+% Suppresses utdthesis doublespacing bleed-through. No setspace pkg. v1.8
+\newenvironment{tightemize}{%
+  \begin{itemize}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\parsep}{0pt}%
+    \setlength{\topsep}{0pt}%
+    \renewcommand{\baselinestretch}{1}\normalsize%
+}{%
+  \end{itemize}%
+}
 
 % hyperref — always last before acronym
 \usepackage[pdftex,bookmarks,colorlinks=false,pdfborder={0 0 0}]{hyperref}
