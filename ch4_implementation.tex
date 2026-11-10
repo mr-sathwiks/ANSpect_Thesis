@@ -5251,33 +5251,208 @@ to this application.
 
 \subsection{Integration Simulation}
 \label{subsec:integration_sim}
-% STATUS: [NDA-IMPL] — BLOCKED
-% TODO: Requires NDA CLEAR: IMPL [4.8.2] + handoff
-%   - Multi-module simulation test results
-%   - Which module groupings were tested together
-%   - Pass/fail summary per integration boundary
+
+Integration simulation was conducted in three incremental stages,
+each extending the verified chain boundary: PL-02 through PL-04,
+PL-02 through PL-06, and PL-02 through PL-08.
+Each stage applied golden vector comparison and chain-level
+profiling to characterize backpressure propagation, stall duty
+cycles, and inter-module timing at each new boundary.
+PL-09 (\ac{srrc} pulse shaping) was excluded from integration
+simulation: the Xilinx \texttt{FIR Compiler} behavioral model
+required 30--40 minutes per simulation test case on the development
+system and crashed before completing a full run.
+PL-09 is validated in hardware only
+(Section~\ref{subsec:txchain_board}).
+
+\FloatBarrier
+\paragraph{Clock Frequency Selection.}
+\leavevmode\par
+
+The \ac{rfsoc}~4x2 \ac{pl} base clock is 100\,MHz at the
+hardware level.
+The 250\,MHz production clock is derived from this
+base, and all \ac{ps}-to-\ac{pl} \ac{axi} interfaces operate
+at the 100\,MHz base clock, introducing a clock-domain crossing
+at the \ac{pl} boundary.
+Stage~2 profiling was run at both 100\,MHz and 250\,MHz to
+determine whether the base clock could sustain the target output
+rate and avoid this crossing~\cite{ITU_J83,DOCSIS3}.
+The logic was confirmed clock-rate agnostic: all cycle counts,
+state transitions, and golden vector outputs were identical at
+both frequencies, with the only difference being wall-clock
+execution time.
+At 100\,MHz, the chain produces approximately 14.3\,Msym/s.
+While this exceeds the single-channel requirement of
+5.360537\,Msym/s~\cite{ITU_J83}, it leaves insufficient headroom
+for downstream modules not yet integrated at Stage~2 and
+eliminates margin for future multi-channel operation.
+At 250\,MHz, the full Stage~3 chain measured 29.3\,Msym/s, a
+5.5$\times$ margin over the single-channel requirement.
+250\,MHz was selected as the production \ac{pl} clock on this
+basis.
+
+\FloatBarrier
+\paragraph{Chain Performance Profile.}
+\leavevmode\par
+
+The dominant chain characteristic is PL-06's 1/7 output duty
+cycle: each 7-bit symbol is serialized one bit per clock cycle,
+reducing the effective output rate to one-seventh of the fabric
+clock and propagating backpressure upstream through every preceding
+module.
+Table~\ref{tab:chain_profile} summarizes the chain-level
+contribution of each module as observed across all three integration
+stages.
+
+\begin{table}[htbp]
+  \caption{Chain-level behavioral contribution per module,
+           PL-02 through PL-08 integration at 250\,MHz.}
+  \label{tab:chain_profile}
+  \centering
+  \small
+  \begin{tabular}{lp{9.5cm}}
+    \hline
+    Module & Chain-level contribution \\
+    \hline
+    PL-02 & One-cycle input stall per \ac{mpegts} packet \\[2pt]
+    PL-03 & \ac{rs} emit window extended from 133 to 884 cycles
+            by PL-06 backpressure, setting the chain input
+            stall profile \\[2pt]
+    PL-04 & 8,129-cycle one-time \ac{bram} initialization;
+            transparent to chain thereafter \\[2pt]
+    PL-05 & Zero added latency (purely combinational path) \\[2pt]
+    PL-06 & 1/7 duty cycle drives 88\% chain input stall ratio;
+            40-cycle frame trailer stall propagates upstream \\[2pt]
+    PL-07 & One-cycle registered latency per trellis group;
+            no additional bottleneck beyond PL-06 \\[2pt]
+    PL-08 & Five-cycle drain per symbol bundle;
+            no additional bottleneck beyond PL-06 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Pipeline fill latency from interleaver initialization to first valid
+PL-08 output is 171 cycles.
+The end-to-end chain throughput at 250\,MHz is 222.6\,Mbps,
+with PL-08 producing 41,520 \ac{iq} pairs across the full test
+input (41,520/41,520 golden matches, all 141 tests).
 
 \subsection{TX-Chain Board Validation}
 \label{subsec:txchain_board}
-% STATUS: [NDA-IMPL] — BLOCKED
-% NOTE: Central location for all PL board-level results
-%       All §4.3.X §8 board cross-refs point here
-% TODO: Requires NDA CLEAR: IMPL [4.8.3] + handoff
-%   - Bitfile / clock / method per module group
-%   - Board deployment test results: PL chain supported by
-%     required PS modules
-%   - Result table: Module / Method / Result / Date
+
+Each integration boundary (PL-02 through PL-04, PL-06, and PL-08)
+was verified on hardware via \ac{dma} loopback golden vector
+comparison against 250 \ac{mpegts} packets at 250\,MHz; all
+boundaries passed.
+PL-09 (\ac{srrc} pulse shaping) was verified in isolation using
+the PL-08 golden output as \ac{dma} input and passed golden vector
+comparison on hardware, constituting its sole verification
+(Section~\ref{subsec:integration_sim}).
+
+\FloatBarrier
+\paragraph{Full-Chain Stream Continuity.}
+\leavevmode\par
+
+The PL-02 through PL-09 chain including the \ac{cdc}~\ac{fifo} was exercised via PL-01 (\ac{axi}
+DMA MM2S) in Scatter-Gather cyclic mode, driven by PS-03, feeding
+276,349 \ac{mpegts} packets continuously across 14 cyclic passes.
+A custom \ac{axi}-Stream monitoring module inserted at the
+clock-domain crossing \ac{fifo} output measured total clock cycles
+and total valid output samples from first valid output to the end
+of the measurement window.
+Table~\ref{tab:board_continuity} gives the measured results.
+
+\begin{table}[htbp]
+  \caption{Full-chain stream continuity measurement results,
+           PL-02 through PL-09, 14 cyclic passes at 250\,MHz.}
+  \label{tab:board_continuity}
+  \centering
+  \small
+  \begin{tabular}{lrrl}
+    \hline
+    Metric & Measured & Expected & Status \\
+    \hline
+    Sample count & 4,219,220,880  & 4,219,220,880  & Pass \\[2pt]
+    Idle cycles  & 0              & 0              & Pass \\[2pt]
+    $f_{s}$      & 32.163222\,Msps & 32.163222\,Msps & Pass \\[2pt]
+    Wall time    & 131.1\,s       & 131.2\,s       & Pass \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The total sample count equals the total clock count across the
+131-second measurement window, confirming a continuous, gap-free
+output stream at the \ac{dac} feed point.
+All 14 cyclic descriptor wrap transitions completed without
+introducing idle cycles, confirming that PL-01 in Scatter-Gather cyclic mode does not
+produce recurring gaps at \ac{bd} boundaries.
+The PL-01 through PL-09 transmit chain therefore delivers a
+continuous, uninterrupted \ac{axi}-Stream to the \ac{rfdc}
+\ac{dac} with zero idle cycles under sustained operation.
 
 \subsection{RFDC Isolation Test}
 \label{subsec:rfdc_isolation}
-% STATUS: OPEN — draftable from diagnostic reports
-% TODO:
-%   - Test topology: Thor → ADC (Tile 224) → CDC FIFO →
-%     DAC (Tile 228) → HDHomeRun
-%   - Purpose: isolate fault to PL chain vs RF path
-%   - Result: fault isolated to PL-02→PL-09
-%   - EVM results: 3.00\% — passes J.83B threshold
-%   - Conclusion: RF path confirmed good; issue upstream
+
+The \ac{rfdc} isolation test validated the \ac{dac} and \ac{adc}
+subsystem configuration against ANSpect requirements:
+\texttt{DAC\_B} at $+$177.0\,MHz \ac{nco}, 40$\times$
+interpolation, 32.163\,Msps baseband input rate (first Nyquist
+zone); \texttt{ADC\_D} at $-$177.0\,MHz \ac{nco}, 40$\times$
+decimation, 32.163\,Msps output rate.
+The test exercised the complete \ac{rfdc} signal path, including
+the asynchronous clock-domain crossing between the \ac{adc} and
+\ac{dac} clock domains, without involvement of the digital
+transmit chain.
+
+\FloatBarrier
+\paragraph{Test Configuration.}
+\leavevmode\par
+
+A passthrough bitstream routed the \texttt{ADC\_D} output to
+\texttt{DAC\_B} through an asynchronous clock-domain crossing
+\ac{fifo}, with the \ac{adc} clock domain driving the \ac{fifo}
+write port and the \ac{dac} clock domain driving the read port.
+The Thor H-Thunder-1 signal generator provided a J.83B 256-QAM
+reference at 177.0\,MHz (cable Ch.\,7) through a
+75\,$\Omega$-to-50\,$\Omega$ impedance matching pad to
+\texttt{ADC\_D}.
+The \texttt{DAC\_B} output was routed through a
+50\,$\Omega$-to-75\,$\Omega$ matching pad to the HDHomeRun
+consumer demodulator, tuned to 256-QAM at 177.0\,MHz.
+Full \ac{rfdc} parameter configuration is given in
+Section~\ref{sec:rfdc}. % label: match §4.4 RFDC label
+
+\FloatBarrier
+\paragraph{Results.}
+\leavevmode\par
+
+The HDHomeRun demodulator acquired full lock on the passthrough
+signal (Table~\ref{tab:rfdc_isolation}).
+All demodulator quality metrics reached their maximum values,
+confirming correct \ac{nco} tuning, interpolation and decimation
+ratios, and clock-domain crossing behavior.
+
+\begin{table}[htbp]
+  \caption{HDHomeRun demodulator status -- \ac{rfdc} passthrough.}
+  \label{tab:rfdc_isolation}
+  \centering
+  \small
+  \begin{tabular}{lll}
+    \hline
+    Metric & Value & Assessment \\
+    \hline
+    Lock      & \texttt{qam256} & Acquired \\[2pt]
+    Signal Strength (\texttt{ss})  & 100 & Pass \\[2pt]
+    SNQ (\texttt{snq})             & 100 & Pass \\[2pt]
+    Sequence Quality (\texttt{seq})& 100 & Pass \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The \ac{rfdc} subsystem configuration meets ANSpect requirements.
+The analog \ac{rf} signal path is confirmed correct and is
+eliminated as a candidate for subsequent system-level evaluation.
 
 \subsection{Full System Validation}
 \label{subsec:system_validation}
