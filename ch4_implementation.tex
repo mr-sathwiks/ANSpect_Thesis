@@ -178,7 +178,7 @@ and prevents lock acquisition; the 2\,s sleep in Step~2 covers
 both \ac{PLL} stages, with on-board \acp{led} confirming lock
 before execution continues.
 
-\textit{Step 5 --- \texttt{FRAME\_SYNC\_CW} write.}
+\textit{Step 5: \texttt{FRAME\_SYNC\_CW} write.}
 \texttt{FRAME\_SYNC\_CW} at PL-11 offset \texttt{0x20} is written and
 readback-verified before the \ac{dma} channel is enabled.
 A write during the active DATA phase of PL-06 propagates to the
@@ -186,17 +186,17 @@ in-flight frame trailer within one clock cycle
 (Section~\ref{subsec:pl11}); boot-sequence ordering eliminates
 this race.
 
-\textit{Steps 6--7 --- tile check and \ac{nco} enforce.}
-\texttt{TileState}~$< 15$ indicates a design fault --- misconfigured
-overlay or clock failure --- and halts execution with no runtime
+\textit{Steps 6--7: tile check and \ac{nco} enforce.}
+\texttt{TileState}~$< 15$ indicates a design indicates a design fault (misconfigured
+overlay or clock failure) and halts execution with no runtime
 recovery path.
 Steps~1--3 must be verified before re-attempting.
 The \ac{nco} enforce step reads back DAC~B Tile~228
 \texttt{MixerSettings} and corrects the frequency to 177.0\,MHz
 if the readback deviates by more than 0.001\,MHz.
 The block design coarse mixer value ($F_s/4$, code~3) is overridden
-to BYPASS (code~16) at this step; the block design default never
-takes effect during operation (Section~\ref{subsec:dac_tile228}).
+to BYPASS (code~16) at this step. The block design default
+never takes effect during operation (Section~\ref{subsec:dac_tile228}).
 
 % ------------------------------------------------------------------
 % §6  INTERFACE CONTRACT
@@ -206,22 +206,22 @@ takes effect during operation (Section~\ref{subsec:dac_tile228}).
 \paragraph{Interface Contract.}
 
 \textit{Upstream:}
-\begin{itemize}
-  \item Input is sourced from \path{stage0_input.bin} preloaded to
+\begin{tightemize}
+  \item Input is sourced from the input binary file preloaded to
         the notebook working directory on the board filesystem.
-\end{itemize}
+\end{tightemize}
 
 \textit{Downstream ($\rightarrow$ PS-03 \ac{dma} MM2S kick):}
-\begin{itemize}
+\begin{tightemize}
   \item \texttt{data\_buf.device\_address}: physical \ac{ddr} base
         address of the transmit buffer.
   \item \texttt{len(stage0)}: total byte count; multiple of~188.
   \item \texttt{data\_buf.flush()} must complete before PS-03 is
         called.
   \item \texttt{data\_buf} must remain allocated for the full
-        duration of the \ac{dma} transfer; \texttt{freebuffer()}
+        duration of the \ac{dma} transfer. \texttt{freebuffer()}
         is called by PS-03 after \ac{dma} halt.
-\end{itemize}
+\end{tightemize}
 
 % ------------------------------------------------------------------
 % §8  VERIFICATION
@@ -269,7 +269,7 @@ takes effect during operation (Section~\ref{subsec:dac_tile228}).
 
 No formal testbench exists; verification is performed via notebook
 execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
-All seven checks passed on hardware with \path{stage0_input.bin}
+All seven checks passed on hardware with the input binary file
 (276{,}349 packets, 51{,}953{,}612~bytes).
 
 %\clearpage
@@ -386,8 +386,8 @@ monitoring is performed by polling
 \FloatBarrier
 \paragraph{Interface Contract.}
 
-\textit{Upstream ($\leftarrow$ PS-02 \texttt{j83b\_tx\_chain()}):}
-\begin{itemize}
+\textit{Upstream} ($\leftarrow$ PS-02 \texttt{j83b\_tx\_chain()}):
+\begin{tightemize}
   \item \texttt{data\_buf.device\_address}: physical \ac{ddr} base
         address of the contiguous transmit buffer.
   \item \texttt{DATA\_LEN}: total byte count; multiple of~188;
@@ -397,28 +397,27 @@ monitoring is performed by polling
   \item \texttt{data\_buf} must remain allocated for the full
         duration of the \ac{dma} transfer; \texttt{freebuffer()}
         is called by PS-03 after \ac{dma} halt.
-\end{itemize}
+\end{tightemize}
 
-\textit{Downstream ($\rightarrow$ PL-01 \ac{axi} \ac{dma} \ac{mm2s}):}
-\begin{itemize}
+\textit{Downstream} ($\rightarrow$ PL-01 \ac{axi} \ac{dma} \ac{mm2s}):
+\begin{tightemize}
   \item PS-03 populates the \ac{bd} chain in \ac{ddr} and
         initiates transfer via the \texttt{MM2S\_TAILDESC}
         \ac{axi}-Lite write~\cite{AMD_PG021}.
   \item Both the \ac{sg} descriptor path (\texttt{M\_AXI\_SG})
         and the \ac{mm2s} data path (\texttt{M\_AXI\_MM2S})
         share \texttt{S\_AXI\_HPC0\_FPD} (SAXIGP0) via
-        SmartConnect; no software isolation is
-        required~\cite{AMD_PG247}.
+        SmartConnect. No software isolation is required~\cite{AMD_PG247}.
   \item \ac{ddr} addresses are auto-assigned by Vivado and must
         be re-derived from \texttt{ip\_dict} or \texttt{.xsa}
-        after every block design rebuild; addresses must not
+        after every block design rebuild. Addresses must not
         be hardcoded.
   \item PL-02 asserts \texttt{tready=0} for one cycle at each
         \ac{mpegts} packet boundary (276{,}349 deassertions per
-        cyclic pass); the \ac{dma} handles this via
+        cyclic pass). The \ac{dma} handles this via
         backpressure with no software action
         required~\cite{AMD_PG021}.
-\end{itemize}
+\end{tightemize}
 
 % ------------------------------------------------------------------
 % §8  VERIFICATION
@@ -471,9 +470,7 @@ monitoring is performed by polling
 
 No formal testbench exists; verification is performed via notebook
 execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
-All nine checks passed on hardware;
-confirmed \texttt{DMASR}~$=$~\texttt{0x00010008}
-(\texttt{Halted=0}, \texttt{SGIncld=1}, \texttt{Err=0x00}).
+All nine checks passed on hardware.
 
 %\clearpage 
 % ------------------------------------------------------------
@@ -598,7 +595,7 @@ Table~\ref{tab:ipconfig_pl01} lists the Vivado block design parameters
 for this instance.
 Both the \texttt{M\_AXI\_MM2S} data path and the \ac{sg} descriptor
 path (\texttt{M\_AXI\_SG}) share \texttt{S\_AXI\_HPC0\_FPD} (SAXIGP0)
-via \texttt{axi\_smc\_data}; SmartConnect arbitrates concurrent accesses
+via \texttt{axi\_smc\_data}. SmartConnect arbitrates concurrent accesses
 without isolation between the two traffic classes~\cite{AMD_PG247}.
 
 \begin{table}[htbp]
@@ -650,22 +647,22 @@ without isolation between the two traffic classes~\cite{AMD_PG247}.
 \FloatBarrier
 \paragraph{Interface Contract.}
 
-\textit{Upstream --- PS-03 via \ac{ddr}:}
+\textit{Upstream} ($\leftarrow$ PS-03 via \ac{ddr}):
 \begin{tightemize}
   \item PS-03 allocates the \ac{sg} BD chain in \ac{ddr}
         (\texttt{HPC0\_DDR\_LOW} range) and writes \texttt{TAILDESC}
-        to \texttt{S\_AXI\_LITE} to initiate transfer; BD chain layout
+        to \texttt{S\_AXI\_LITE} to initiate transfer. BD chain layout
         and ring-vs-linear topology are owned by PS-03.
   \item \ac{ddr} addresses are assigned by Vivado at block design
         elaboration.
 \end{tightemize}
 
-\textit{Downstream --- PL-02 \texttt{TRANSPORT\_FRAMING}:}
+\textit{Downstream} ($\rightarrow$ PL-02 \texttt{TRANSPORT\_FRAMING}):
 \begin{tightemize}
   \item \texttt{M\_AXIS\_MM2S} delivers one byte per clock at 250\,MHz
-        when data is available; \texttt{tvalid} de-asserts during
+        when data is available. \texttt{tvalid} de-asserts during
         inter-BD gaps while the engine fetches the next descriptor.
-  \item \texttt{TLAST} is asserted at the end of each BD transfer;
+  \item \texttt{TLAST} is asserted at the end of each BD transfer.
         \texttt{TKEEP} is always asserted (8-bit bus, no partial bytes).
   \item PL-02 must hold \texttt{tready}; backpressure stalls the
         \texttt{M\_AXI\_MM2S} \ac{ddr} read channel directly.
@@ -678,10 +675,9 @@ without isolation between the two traffic classes~\cite{AMD_PG247}.
 \FloatBarrier
 \paragraph{Verification.}
 
-No standalone testbench exists for \texttt{axi\_dma\_ps\_pl}; the core
+No standalone testbench exists for \texttt{axi\_dma\_ps\_pl}. The core
 is a Xilinx catalog \ac{ip}.
-PL-01 was validated as the data source in the TX chain integration
-test; see Section~\ref{subsec:txchain_board}.
+Production chain board results are recorded in Section~\ref{subsec:txchain_board}.
 
 %\clearpage
 
@@ -696,10 +692,10 @@ The transport framing module (PL-02) implements the \ac{mpegts} packet
 framing stage of the J.83B Annex~B transmit chain, specified in
 \S\,B.4 of the standard~\cite{ITU_J83}.
 The algorithmic background for this stage is described in
-Section~\ref{sec:j83b_standard}; this section covers its hardware
+Section~\ref{sec:j83b_standard}. This section covers its hardware
 realization.
-The module is hand-coded SystemVerilog (\texttt{transport\_framing.sv},
-revision~v2.1), operates as an \ac{axi}4-Stream slave-to-master pair at
+The module is hand-coded SystemVerilog, revision~v2.1, operates as
+an \ac{axi}4-Stream slave-to-master pair at
 the 250\,MHz \ac{pl} fabric clock.
 Its position in the transmit chain is shown in
 Figure~\ref{fig:pl02_pipeline}.
@@ -780,7 +776,7 @@ registers (\texttt{r1}, \texttt{r2}, \texttt{r3}), an 8-bit
 register.
 Registers \texttt{r2} and \texttt{r3} are initialized to \texttt{0x00}
 per the J.83B~\S\,B.4 specification and are never subsequently
-updated~\cite{ITU_J83}; they are retained in the \ac{rtl} for
+updated~\cite{ITU_J83}. They are retained in the \ac{rtl} for
 algorithmic traceability.
 
 The \texttt{ph1\_lfsr\_chain} block implements the 8-step bit-serial
@@ -797,7 +793,7 @@ The drain result is latched into the \texttt{checksum} register only when
 \texttt{byte\_cnt}~$\geq 187$ in \texttt{PH\_TWO}.
 Running the drain chain unconditionally on every cycle simplifies control
 logic at the cost of switching activity on the 186 non-drain cycles per
-packet; this is a deferred power optimization with no functional impact.
+packet: a deferred power optimization with no functional impact.
 
 \texttt{m\_axi\_tdata} is driven by a state-selected combinational mux:
 it carries \texttt{checksum} in \texttt{PH\_THREE} and passes
@@ -819,7 +815,7 @@ cut was introduced.
 \paragraph{FSM.}
 The four-state \ac{fsm} maps directly onto the three-phase checksum
 computation.
-Figure~\ref{fig:pl02_fsm} shows the state transition diagram;
+Figure~\ref{fig:pl02_fsm} shows the state transition diagram.
 Table~\ref{tab:pl02_fsm} gives the handshake signal values per state.
 
 \begin{figure}[htbp]
@@ -863,7 +859,7 @@ unconditionally, decoupled from \texttt{m\_axi\_tready} (revision~v2.1).
 This decoupling resolves a cold-boot deadlock in which the module waited
 for \ac{rs} encoder readiness before accepting the first \texttt{0x47}
 byte, while the \ac{rs} encoder simultaneously awaited valid input data
---- a circular stall with no external resolution.
+(circular stall with no external resolution).
 Since \texttt{PH\_SYNC} produces no output (\texttt{m\_axi\_tvalid}~$= 0$),
 downstream readiness is irrelevant in this state and the decoupling is
 unconditional.
@@ -909,14 +905,14 @@ Table~\ref{tab:pl02_roms} lists the ROM parameters.
 \FloatBarrier
 \paragraph{Interface Contract.}
 
-\textit{Upstream (\texttt{s\_axi\_*}, from PL-01 \ac{axi} \ac{dma} MM2S):}
+\textit{Upstream} ($\leftarrow$ PL-01 \texttt{M\_AXIS\_MM2S}):
 \begin{tightemize}
-  \item PL-01 delivers a raw \ac{mpegts} byte stream; interface contract
+  \item PL-01 delivers a raw \ac{mpegts} byte stream. Interface contract
         details are explained in PL-01 downstream boundary
         (Section~\ref{subsec:pl01}).
 \end{tightemize}
 
-\textit{Downstream (\texttt{m\_axi\_*}, to PL-03 \ac{rs} encoder):}
+\textit{Downstream} ($\rightarrow$ PL-03 \texttt{rs\_enc}):
 \begin{tightemize}
   \item The \texttt{0x47} sync byte is consumed and not forwarded
         downstream.
@@ -1011,15 +1007,14 @@ Figure~\ref{fig:pl02_packet}.
 Unit-level verification compared a 250-packet golden vector sweep
 against the \textsc{Matlab} reference model.
 Integration testing confirmed 1-cycle checksum drain latency and zero
-spurious sync transitions with an all-\texttt{0x47} payload;
-deterministic checksum \texttt{0x67} was confirmed for all-zero payload.
+spurious sync transitions with an all-\texttt{0x47} payload.
+Deterministic checksum \texttt{0x67} was confirmed for all-zero payload.
 End-to-end testing in the PL-02$\to$PL-06 chain confirmed
 8{,}304/8{,}304 trellis groups bit-exact against the stage~5 golden
 reference.
 
 \textit{Hardware.}
-Board validation of PL-02 was performed as part of the PL-02--PL-06
-transmit chain; see Section~\ref{subsec:txchain_board}.
+Production chain board results are recorded in Section~\ref{subsec:txchain_board}.
 
 %\clearpage
 
@@ -1033,12 +1028,12 @@ transmit chain; see Section~\ref{subsec:txchain_board}.
 The Reed-Solomon encoder module (PL-03) implements the J.83B Annex~B
 $(128,\,122)$ extended \ac{rs} encoding stage over $\mathrm{GF}(2^7)$,
 specified in \S\,B.5.1 of the standard~\cite{ITU_J83}.
-The algorithmic definition of this code --- field arithmetic, generator
-polynomial, parity computation, and extended symbol derivation --- is
-presented in Section~\ref{sec:rs_encoding}; this section describes its
+The algorithmic definition of this code (field arithmetic, generator
+polynomial, parity computation, and extended symbol derivation) is
+presented in Section~\ref{sec:rs_encoding}. This section describes its
 hardware realization.
-The module is hand-coded SystemVerilog (\texttt{rs\_enc.sv},
-revision~v2.0), operates as an \ac{axi}4-Stream slave-to-master pair
+The module is hand-coded SystemVerilog, revision~v2.0, operates as
+an \ac{axi}4-Stream slave-to-master pair
 at the 250\,MHz \ac{pl} fabric clock.
 Figure~\ref{fig:pl03_pipeline} shows its position in the transmit chain,
 receiving framed bytes from PL-02 and forwarding $(128,\,122)$ coded
@@ -1066,7 +1061,7 @@ blocks to PL-04.
 \paragraph{Interface.}
 
 The Vivado \ac{ip} Integrator view is shown in
-Figure~\ref{fig:pl03_ip_block}; the port list is given in
+Figure~\ref{fig:pl03_ip_block}. The port list is given in
 Table~\ref{tab:pl03_ports}.
 
 \begin{figure}[htbp]
@@ -1114,7 +1109,7 @@ Table~\ref{tab:pl03_ports}.
 \FloatBarrier
 \paragraph{FSM.}
 
-Figure~\ref{fig:pl03_fsm} shows the state transition diagram;
+Figure~\ref{fig:pl03_fsm} shows the state transition diagram.
 Table~\ref{tab:pl03_fsm} gives the handshake signal values per state.
 
 \begin{figure}[htbp]
@@ -1148,14 +1143,14 @@ Table~\ref{tab:pl03_fsm} gives the handshake signal values per state.
 \texttt{ABSORB} on the next clock cycle.
 
 \texttt{ABSORB}: \ac{rs} parity is computed incrementally in the
-background via a $\mathrm{GF}(128)$ \ac{lfsr}; no separate encoding
+background via a $\mathrm{GF}(128)$ \ac{lfsr}. No separate encoding
 pass is required.
 
 \texttt{EMIT\_INFO}: the 122 original bytes are sent downstream while
 $c(\alpha^6)$ is computed concurrently via Horner's method.
 This computation finishes 5~clock cycles after byte~121 is ready to
-send; during these 5~cycles the module pauses output
-(\texttt{m\_axi\_tvalid}~$= 0$) --- the Horner stall visible at the
+send. During these 5~cycles the module pauses output
+(\texttt{m\_axi\_tvalid}~$= 0$), the Horner stall visible at the
 \texttt{EMIT\_INFO} self-loop in Figure~\ref{fig:pl03_fsm}.
 
 \texttt{EMIT\_EXT}: on the output handshake, the module transitions
@@ -1197,7 +1192,7 @@ Downstream backpressure from PL-04 does not propagate upstream to PL-02.
 \paragraph{Memory Resources.}
 All $\mathrm{GF}(128)$ multiplications in the \ac{lfsr} encoder and
 the Horner evaluator are provided by a common sub-module,
-\texttt{gf\_mul\_rom.sv}, instantiated six times.
+\texttt{gf\_mul\_rom}, instantiated six times.
 Each instance is a $16{,}384 \times 7$-bit combinational \ac{rom}
 addressed by the 14-bit concatenation $\{a[6:0],\,b[6:0]\}$,
 implementing the full $128 \times 128$ $\mathrm{GF}(128)$ multiplication
@@ -1218,7 +1213,7 @@ Table~\ref{tab:pl03_roms} lists the sub-module configuration.
     \hline
     Parameter            & Value \\
     \hline
-    Module file          & \texttt{gf\_mul\_rom.sv} \\[2pt]
+    Module               & \texttt{gf\_mul\_rom} \\[2pt]
     Instances            & 6 total: \texttt{gf\_rom1}--\texttt{gf\_rom5}
                            (\ac{lfsr} taps $G_1$--$G_5$);
                            \texttt{gf\_rom\_exp6} (Horner $\alpha^6$ step) \\[2pt]
@@ -1228,8 +1223,7 @@ Table~\ref{tab:pl03_roms} lists the sub-module configuration.
                            $p(x) = x^7 + x^3 + 1$ \\[2pt]
     Synthesis            & Distributed (\texttt{rom\_style = "distributed"});
                            combinational read \\[2pt]
-    Source file          & \texttt{gf\_mul.mem} (shared across all 6 instances) \\[2pt]
-    Generator            & \textsc{Matlab} script \\
+    Source               & pre-computed offline (shared across all 6 instances) \\
     \hline
   \end{tabular}
 \end{table}
@@ -1243,15 +1237,15 @@ Table~\ref{tab:pl03_roms} lists the sub-module configuration.
 % [FIGURE OMITTED: datapath diagram figures/ch4_pl03_datapath — omitted by author]
 
 \textit{Bit masking.}
-The J.83B \ac{rs} code operates on 7-bit $\mathrm{GF}(128)$ symbols;
-the 8-bit \ac{axi}4-Stream bus carries one symbol per byte with bit~7
+The J.83B \ac{rs} code operates on 7-bit $\mathrm{GF}(128)$ symbols.
+The 8-bit \ac{axi}4-Stream bus carries one symbol per byte with bit~7
 unused~\cite{ITU_J83}.
 Bit~7 of \texttt{s\_axi\_tdata} is masked to zero before any
 computation, and all output symbols are formed by the
 \texttt{\{1'b0,\,cw[out\_cnt]\}} concatenation in the output mux,
 hardwiring bit~7 to zero on every output byte.
 
-\textit{\texttt{ABSORB} --- \ac{lfsr} encoder.}
+\textit{\texttt{ABSORB}: \ac{lfsr} encoder.}
 The five \texttt{gf\_mul\_rom} instances \texttt{gf\_rom1}--\texttt{gf\_rom5}
 provide the $\mathrm{GF}(128)$ multiplications for generator coefficients
 $G_1\!=\!62$, $G_2\!=\!46$, $G_3\!=\!98$, $G_4\!=\!70$,
@@ -1265,7 +1259,7 @@ On the final handshake at \texttt{sym\_cnt}~$= 121$, the five computed
 parity values are snapshotted into \texttt{cw[122:126]}, completing
 the 127-symbol codeword used by the Horner circuit.
 
-\textit{\texttt{EMIT\_INFO} --- Horner evaluator.}
+\textit{\texttt{EMIT\_INFO}: Horner evaluator.}
 The sixth instance \texttt{gf\_rom\_exp6} computes
 $\bar{c} = c(\alpha^6)$ via Horner's method over \texttt{cw[0:126]}
 while info bytes stream downstream.
@@ -1295,14 +1289,14 @@ in Table~\ref{tab:pl03_resources}.
 \FloatBarrier
 \paragraph{Interface Contract.}
 
-\textit{Upstream (\texttt{s\_axi\_*}, from PL-02 transport framing):}
+\textit{Upstream} ($\leftarrow$ PL-02 \texttt{transport\_framing}):
 \begin{tightemize}
-  \item PL-02 delivers the framed byte stream; interface contract
+  \item PL-02 delivers the framed byte stream. Interface contract
         details are defined at the PL-02 downstream boundary
         (Section~\ref{subsec:pl02}).
 \end{tightemize}
 
-\textit{Downstream (\texttt{m\_axi\_*}, to PL-04 convolutional interleaver):}
+\textit{Downstream} ($\rightarrow$ PL-04 \texttt{interleaver}):
 \begin{tightemize}
   \item Bit~7 is hardwired to zero on all output symbols.
   \item A fixed 5-cycle gap (\texttt{m\_axi\_tvalid}~$= 0$) appears
@@ -1405,8 +1399,7 @@ End-to-end testing in the PL-02$\to$PL-06 chain confirmed
 reference.
 
 \textit{Hardware.}
-Board validation of PL-03 was performed as part of the PL-02--PL-06
-transmit chain; see Section~\ref{subsec:txchain_board}.
+Production chain board results are recorded in Section~\ref{subsec:txchain_board}.
 
 %\clearpage
 
@@ -4972,6 +4965,7 @@ The \ac{rfdc} configuration is frozen on the basis of that result.
 \clearpage
 
 % ------------------------------------------------------------
+
 \section{RF TX Front-End}
 \label{sec:rf_frontend}
 
@@ -5123,47 +5117,112 @@ passthrough isolation test described in Section~\ref{subsec:dac_tile228},
 in which the HDHomeRun consumer receiver reported \texttt{lock=qam256}
 at 177MHz center frequency.
 % ------------------------------------------------------------
-% ------------------------------------------------------------
+
 \section{Test Equipment}
 \label{sec:test_equipment}
-% STATUS: OPEN — equipment descriptions only; results in §4.8
-% TODO:
-%   - Intro sentence: list equipment used across verification phases
-%   - No results reported here — pointer to §\ref{sec:verification}
 
-\subsection{H-Thunder-1 Reference Signal}
+Three instruments support the verification phases described in
+Section~\ref{sec:verification}: the Thor Broadcast H-Thunder-1 digital
+modulator, the SiliconDust HDHomeRun Flex Duo network tuner, and the
+Anritsu MS2721B Spectrum Master handheld spectrum analyzer.
+
+% ------------------------------------------------------------
+\subsection{H-Thunder-1 Reference Signal Generator}
 \label{subsec:hthunder}
-% STATUS: OPEN — public product spec
-% TODO:
-%   - H-Thunder-1 J.83B / 256-QAM reference signal generator
-%   - Role: TX output comparison reference — known-good J.83B
-%     signal for spectral and EVM baseline comparison
-%   - Public product specification detail
-%   - Cite product datasheet \cite{NEEDED} % [CITE NEEDED]
 
-\subsection{HDHomeRun: Source and Sink}
+The Thor Broadcast H-Thunder-1 is a single-channel HDMI digital
+modulator that accepts an HDMI video source and outputs a modulated
+\ac{rf} signal on a selectable cable television
+frequency~\cite{ThorH1}.
+In this work it is configured to generate a J.83B Annex~B 256-QAM
+signal at 177\,MHz (North American cable channel~7), providing a
+known-good reference against which the \ac{rfsoc}~4x2 transmit
+output is compared for spectral shape and \ac{evm}
+baseline~\cite{ThorH1,ITU_J83}.
+Measurement results using this reference are reported in
+Section~\ref{subsec:system_validation}.
+
+Table~\ref{tab:hthunder_spec} lists the J.83B-relevant modulator
+parameters.
+
+\begin{table}[htbp]
+  \caption{H-Thunder-1 J.83B modulator parameters used in this
+           work~\cite{ThorH1}.}
+  \label{tab:hthunder_spec}
+  \centering
+  \small
+  \begin{tabular}{ll}
+    \hline
+    Parameter                   & Value \\
+    \hline
+    Standard                    & J.83B Annex~B \\[2pt]
+    Constellation               & 256-QAM \\[2pt]
+    Channel bandwidth           & 6\,MHz \\[2pt]
+    Modulation Error Ratio      & $\geq 35$\,dB \\[2pt]
+    \ac{rf} output range        & 54--1000\,MHz (1\,kHz step) \\[2pt]
+    Configured frequency        & 177\,MHz (Channel~7) \\[2pt]
+    \ac{rf} output level        & $-35$\,dBm (1\,dB step) \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------
+\subsection{HDHomeRun: Consumer Lock Validation}
 \label{subsec:hdhomerun}
-% STATUS: OPEN — public product (EXT-04, EXT-05)
-% TODO:
-%   - HDHomeRun \#1 role: MPEG-TS source over GigE (TX path input)
-%   - HDHomeRun \#2 role: TX lock validation instrument +
-%     diagnostic instrument (RFDC isolation test)
-%   - Equipment description only — lock results →
-%     §\ref{subsec:system_validation} and §\ref{subsec:lock_failure}
-%   - Public product — cite product page \cite{NEEDED} % [CITE NEEDED]
 
+The SiliconDust HDHomeRun Flex Duo (HDFX-2US) is a network-connected
+dual-tuner receiver that supports unencrypted QAM-64 and QAM-256
+cable signals and reports tuner lock status and signal quality metrics
+over a 100BASE-TX Ethernet interface~\cite{HDHomeRun}.
+In this work it serves as the consumer lock validation instrument:
+its reported lock state is the primary pass or fail criterion for
+the full-system validation and \ac{rfdc} isolation
+tests~\cite{HDHomeRun}.
+Results are reported in Sections~\ref{subsec:system_validation}
+and~\ref{subsec:lock_failure}.
+
+% ------------------------------------------------------------
 \subsection{Spectrum Analyzer}
 \label{subsec:spectrum_analyzer}
-% STATUS: OPEN — general methodology
-% TODO:
-%   - Spectrum analyzer role in RF output validation
-%   - Measurements performed: channel power, spectral shape,
-%     occupied bandwidth, noise floor
-%   - Equipment description only — results → §\ref{subsec:system_validation}
-%   - General methodology — no proprietary test vector data
+
+The Anritsu MS2721B Spectrum Master is a handheld spectrum analyzer
+covering 9\,kHz to 7.1\,GHz~\cite{Anritsu_MS2721B}.
+In this work it characterizes the \ac{rf} output of the J.83B transmit
+chain at 177\,MHz, measuring channel power, spectral shape, occupied
+bandwidth, and noise floor~\cite{Anritsu_MS2721B}.
+Results are reported in Section~\ref{subsec:system_validation}.
+
+Table~\ref{tab:ms2721b_spec} lists the analyzer parameters relevant
+to this application.
+
+\begin{table}[htbp]
+  \caption{Anritsu MS2721B Spectrum Master parameters relevant to
+           J.83B \ac{rf} output validation at
+           177\,MHz~\cite{Anritsu_MS2721B}.}
+  \label{tab:ms2721b_spec}
+  \centering
+  \small
+  \begin{tabular}{ll}
+    \hline
+    Parameter                       & Value \\
+    \hline
+    Frequency range                 & 9\,kHz to 7.1\,GHz \\[2pt]
+    Measurements                    & Channel power, occupied bandwidth,
+                                      channel power ratio \\[2pt]
+    Amplitude accuracy              & $\pm 1.25$\,dB
+                                      (10\,MHz to 4\,GHz, preamp off) \\[2pt]
+    Dynamic range                   & $> 101$\,dB (1\,Hz resolution bandwidth) \\[2pt]
+    Display avg.\ noise level       & $-140$\,dBm typical
+                                      (10\,MHz to 1\,GHz, 1\,Hz resolution bandwidth) \\[2pt]
+    Input impedance                 & 50\,$\Omega$ (75\,$\Omega$ selectable) \\[2pt]
+    Resolution bandwidth range      & 1\,Hz to 3\,MHz \\
+    \hline
+  \end{tabular}
+\end{table}
 
 \clearpage
 % ------------------------------------------------------------
+
 \section{Verification and Results}
 \label{sec:verification}
 % STATUS: MIXED — see per-subsection gates below
