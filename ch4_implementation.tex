@@ -474,6 +474,7 @@ All nine checks passed on hardware.
 
 %\clearpage 
 % ------------------------------------------------------------
+
 \section{Programmable Logic: TX Chain}
 \label{sec:pl_tx}
 
@@ -3942,27 +3943,6 @@ Section~\ref{subsec:txchain_board}.
 %   - Requires NDA CLEAR: IMPL [4.3.10] for structural frame only
 This section will be removed.
 
-% ============================================================
-% CH-4.3.11  PL-11: anspect_ctrl_regs — AXI-Lite Register File
-% Source : PL-11_anspect_ctrl_regs_handoff.md v2.0  28-Jul-2026
-%          RTL: anspect_ctrl_regs.v v2  28-Jul-2026
-%               anspect_ctrl_regs_slave_lite_v1_0_S00_AXI.v v2
-%          Vivado IP Packager template — customized registers and output ports
-% NDA CLEAR: IMPL [4.3] — received
-% Preflight : CH-4.3.11 [PL-11] — PASS  03-Nov-2026
-%   IMG-1 [x]  IMG-2 [x]  IMG-3 WAIVED (Vivado template FSM)
-%   Resource/Timing [OMITTED — port isolation not possible;
-%                   unconnected outputs optimized away]
-%   HW validation [x] — 0x00–0x1C PYNQ MMIO validated;
-%                       0x20 validated — frame_sync_cw → PL-06 ctrl_word confirmed on board
-%                       PL-02→PL-08 deployment confirms config operative
-% Expanded  : 03-Nov-2026
-% Template  : CARRY_FORWARD.md §1–§8 v1.2
-%             §4 OMITTED — no AXI-Stream datapath; register file only
-%             §5 OMITTED — no ROM/BRAM/filter
-%             §7 OMITTED — port isolation not possible
-% ============================================================
-
 \subsection{PL-11: \texttt{anspect\_ctrl\_regs} AXI-Lite Register File}
 \label{subsec:pl11}
 
@@ -5456,14 +5436,68 @@ eliminated as a candidate for subsequent system-level evaluation.
 
 \subsection{Full System Validation}
 \label{subsec:system_validation}
-% STATUS: OPEN — draftable from diagnostic reports
-% TODO:
-%   - Full system test: PS + PL + RFDC + EXT
-%   - Input: saved MPEG-TS bytes from .bin file
-%   - Spectral analysis results: channel power, spectral shape,
-%     occupied bandwidth
-%   - HDHomeRun lock validation result
-%   - Figures: spectrum plot (→ figures/ch4/)
+
+The full system validation exercised the complete transmit path from
+the \ac{ps} software layer through the digital \ac{pl} chain, the
+\ac{rfdc} \ac{dac}, and the \ac{rf} output to the cable plant.
+The \ac{ps} supplied pre-computed \ac{mpegts} test vectors to
+PL-01 in Scatter-Gather cyclic mode; the PL-02 through PL-09 chain
+processed the stream continuously; and the \ac{rfdc} \ac{dac}
+upconverted the baseband output to 177.0\,MHz (DOCSIS cable
+channel~7).
+Spectrum measurements were acquired at the \ac{rf} output using the
+Anritsu MS2721B spectrum analyzer in RMS/Average detection mode
+(10-trace average, RBW\,=\,100\,kHz, VBW\,=\,10\,kHz).
+
+\FloatBarrier
+\paragraph{Spectral Measurements.}
+\leavevmode\par
+
+The measured channel power at 177.0\,MHz over a 6.000\,MHz integration
+bandwidth was $-$28.6\,dBm.
+The 99\,\% occupied bandwidth was 5.526\,MHz, contained within the
+6.000\,MHz DOCSIS channel allocation.
+The spectral shape exhibits a flat passband with steep roll-off edges
+consistent with the \ac{srrc} pulse-shaping filter implemented in
+PL-09 (Section~\ref{subsec:srrc_tx}).
+Figures~\ref{fig:anritsu_ch_power} and~\ref{fig:anritsu_occ_bw} show
+the channel-power and occupied-bandwidth captures, respectively.
+
+\begin{figure}[htbp]
+  % [ALT: Anritsu MS2721B spectrum analyzer display centered at
+  %  177.0 MHz showing a flat-top 256-QAM signal with steep SRRC
+  %  roll-off on both edges. Channel power integration box spans
+  %  6.000 MHz. Measured channel power: -28.6 dBm.]
+  \includegraphics[width=.65\linewidth]{figures/ch4/anritsu_ch_power}
+  \caption{Anritsu MS2721B channel-power measurement at 177.0\,MHz
+           (DOCSIS cable channel~7). Integration bandwidth:
+           6.000\,MHz; measured channel power: $-$28.6\,dBm;
+           10-trace RMS/Average, RBW 100\,kHz, VBW 10\,kHz.}
+  \label{fig:anritsu_ch_power}
+\end{figure}
+
+\begin{figure}[htbp]
+  % [ALT: Anritsu MS2721B occupied bandwidth measurement at
+  %  177.0 MHz. Vertical markers indicate 99% power boundaries.
+  %  Occupied bandwidth reads 5.526 MHz; XdB = 5.8 dB.]
+  \includegraphics[width=.65\linewidth]{figures/ch4/anritsu_occ_bw}
+  \caption{Anritsu MS2721B occupied-bandwidth measurement at
+           177.0\,MHz. 99\,\% power bandwidth: 5.526\,MHz;
+           measured X\,dB: 5.8\,dB.}
+  \label{fig:anritsu_occ_bw}
+\end{figure}
+
+\FloatBarrier
+\paragraph{Consumer Device Lock Result.}
+\leavevmode\par
+
+The HDHomeRun HDFX-2US was connected to the \ac{rf} output and tuned
+to 177.0\,MHz.
+The device reported \texttt{lock=none}, indicating that the transmitted
+signal did not achieve 256-QAM demodulator lock under the full-system
+configuration.
+Investigation of candidate causes is presented in
+Section~\ref{subsec:lock_failure}.
 
 \subsection{Consumer Device Lock Failure}
 \label{subsec:lock_failure}
