@@ -8,44 +8,107 @@
 
 % ============================================================
 % CHAPTER 5 — CONCLUSION AND FUTURE WORK
-% STATUS: OPEN
 % ============================================================
 
 \chapter{Conclusion and Future Work}
 \label{ch:conclusion}
-% TODO:
-%   - Brief synthesis paragraph linking CH-1 problem to outcome
-%   - Frame the two sections below
+
+This thesis presented the design, implementation, and verification
+of a J.83B Annex~B 256-QAM downstream transmit chain on the
+Xilinx Zynq UltraScale+ \ac{rfsoc}~4x2.
+The implemented system produced a correct \ac{rf} signal at
+177\,MHz with verified spectral characteristics; consumer device
+lock was not achieved, and the root cause remains an open problem.
 
 % ------------------------------------------------------------
 \section{Summary of Contributions}
 \label{sec:contributions_summary}
-% TODO:
-%   - Restate contributions from Section~\ref{sec:contributions}
-%     in past tense with outcome framing
-%   Contribution 1: manual SystemVerilog RTL — J.83B Annex B
-%     TX chain — outcome of HDL Coder evaluation
-%   Contribution 2: TX verification methodology —
-%     simulation + GNU Radio cross-validation + hardware EVM
-%   Contribution 3: RF diagnostic methodology —
-%     RFDC isolation + systematic hypothesis elimination
-%   Contribution 4: [NDA-TITLE system] — stated generically
-%   - Consumer lock not achieved — state honestly
-%   - Root cause not identified — state honestly
-%   - RX chain not implemented — out of scope
+
+\begin{tightemize}
+
+  \item \textbf{Manual SystemVerilog \ac{rtl} implementation of
+        the J.83B Annex~B 256-QAM downstream transmit chain.}
+        Eight custom \ac{rtl} modules were designed and integrated
+        as a ten-stage \ac{axi}-Stream pipeline on a 250\,MHz
+        fabric clock, covering the full processing path from
+        transport framing through \ac{srrc} pulse shaping.
+        The manual coding approach was adopted after
+        \ac{hdl} Coder was found to introduce fixed-point
+        conversion overhead and integration constraints that made
+        the generated \ac{rtl} unsuitable for direct deployment.
+
+  \item \textbf{Multi-stage hardware verification methodology.}
+        A stage-boundary golden vector framework was developed
+        to enable bit-exact simulation and \ac{dma} loopback
+        verification at each pipeline boundary.
+        Unit simulation was applied to all eight custom modules;
+        integration simulation was run across three incremental
+        chain boundaries; and hardware golden vector comparison
+        was performed at every \ac{dma}-accessible boundary.
+
+  \item \textbf{\ac{rf} diagnostic methodology for \ac{rfsoc}
+        transmit systems.}
+        An \ac{rfdc} isolation test validated the analog signal
+        path independently of the digital chain; the passthrough
+        path achieved full consumer demodulator lock with
+        signal strength, signal quality, and symbol quality all
+        at 100\,\%.
+        Thirteen hypotheses covering \ac{rfdc} configuration,
+        \ac{iq} polarity, spectral inversion, constellation
+        mapping, test vector content, and control word encoding
+        were investigated and eliminated, localizing the consumer
+        device lock failure to the protocol layer.
+
+  \item \textbf{An integrated J.83B Annex~B 256-QAM downstream
+        transmit system on \ac{rfsoc}.}
+        The system was implemented as a PYNQ overlay on the
+        RFSoC~4x2 and demonstrated continuous, gap-free
+        \ac{axi}-Stream output at the \ac{rfdc} \ac{dac} input
+        under sustained operation.
+        A 131-second continuity measurement recorded
+        4,219,220,880 samples with zero idle cycles across
+        14 cyclic descriptor wrap transitions.
+
+\end{tightemize}
 
 % ------------------------------------------------------------
 \section{Future Work}
 \label{sec:future_work}
-% TODO:
-%   - Enumerate open research directions
-%   Candidate directions (do not invent — confirm with advisor):
-%   - Resolution of consumer device lock failure —
-%     verify open hypotheses listed in §\ref{subsec:open_hypotheses}
-%   - RX chain implementation (PL-13 through PL-23)
-%   - OFDM / DOCSIS 3.1 SC-FDE extension
-%   - Multi-channel concurrent operation on RFSoC 4x2
-%   - Real-time MPEG-TS throughput benchmarking
-%   - Additional FEC modes or constellation orders
-%   - HDL Coder re-evaluation with updated toolchain version
-%   - Open-source release and reproducibility packaging
+
+Three areas are identified for future investigation.
+
+\textbf{Consumer device lock resolution.}
+The consumer device lock failure was localized to the protocol
+layer but the root cause was not identified within the scope
+of this thesis.
+Six technical hypotheses remain open: \ac{fec} frame
+synchronization pattern acquisition requirements, constellation
+point fixed-point precision compliance, \ac{srrc} interpolation
+rate compliance, the clock tree and symbol rate relationship,
+independent algorithmic verification of the constellation map,
+and an independent audit of the \ac{rs} encoder, convolutional
+interleaver, randomizer, and frame synchronization encoder
+against the J.83B Annex~B specification.
+Resolving these hypotheses requires a spec-compliant J.83B
+software receiver capable of identifying the layer at which
+the transmitted bitstream diverges from the standard, and a
+cable signal analyzer with 256-QAM demodulation capability
+for constellation visualization.
+
+\textbf{Rx chain implementation.}
+The scope of this thesis was restricted to the transmit
+direction.
+A complete J.83B Annex~B receiver chain on the same
+\ac{rfsoc}~4x2 platform would enable closed-loop hardware
+loopback testing, provide an independent method for
+verifying transmit chain compliance, and complete the
+bidirectional cable modem physical-layer prototype.
+
+\textbf{O-EMA overlay activation.}
+The ANSpect O-EMA \ac{phy} overlay is a proprietary
+signal processing algorithm developed by ANSpect that
+extends the J.83B Annex~B physical layer.
+It was not activated within the scope of this thesis.
+Integrating the O-EMA layer with the verified J.83B transmit
+chain represents the next stage of the ANSpect platform
+development.

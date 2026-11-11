@@ -8,58 +8,105 @@
 
 % ============================================================
 % CHAPTER 1 — INTRODUCTION
-% STATUS: OPEN
 % ============================================================
 
 \chapter{Introduction}
 \label{ch:introduction}
-% TODO:
-%   - Brief framing of the research context
-%   - Cable broadcast PHY implementation on RFSoC platform
-%   - Lead into chapter structure
+
+This thesis presents the design, implementation, and verification
+of a J.83B Annex~B 256-QAM downstream transmit chain on the
+Xilinx Zynq UltraScale+ \ac{rfsoc}~4x2 platform~\cite{AMD_UG1085}.
+The transmit chain implements the full DOCSIS~3.0 downstream
+physical-layer processing pipeline in custom \ac{rtl} and delivers
+a 177\,MHz cable channel output at the board \ac{sma} connector.
+Sections~\ref{sec:motivation} through~\ref{sec:organization} state
+the motivation, problem scope, contributions, and chapter
+organization.
 
 % ------------------------------------------------------------
 \section{Motivation}
 \label{sec:motivation}
-% TODO:
-%   - Growth of FPGA-based SDR systems in cable/broadcast
-%   - Gap: no open academic RFSoC J.83B Annex B implementation
-%   - Industrial relevance: DOCSIS 3.0 downstream PHY demand
-%   - Motivate RTL-first approach over MATLAB/HDL Coder path
+
+The Xilinx Zynq UltraScale+ \ac{rfsoc} integrates multi-gigasample
+\ac{dac} and \ac{adc} converters directly on the \ac{pl} die,
+making it a practical platform for cable and broadcast
+physical-layer prototyping~\cite{AMD_UG1085,Kovacs2024,Javaid2022}
+No open academic implementation of the J.83B Annex~B 256-QAM
+downstream \ac{phy} on an \ac{rfsoc} platform has been published,
+despite DOCSIS~3.0 remaining the predominant downstream physical
+layer for cable modem infrastructure~\cite{ITU_J83,DOCSIS3}.
+The standard MATLAB \ac{hdl} Coder toolchain path~\cite{HDLCoder}
+introduced fixed-point conversion overhead and integration
+constraints that made the generated \ac{rtl} unsuitable for
+direct deployment, motivating a manual SystemVerilog implementation.
 
 % ------------------------------------------------------------
 \section{Problem Statement}
 \label{sec:problem_statement}
-% TODO:
-%   - Define the technical problem: J.83B Annex B TX
-%     chain on Zynq UltraScale+ RFSoC 4x2
-%   - State scope boundary explicitly: TX only; RX not implemented
-%   - Note: consumer device lock not achieved — state in scope section
-%   - Identify HDL Coder limitations as a secondary problem
-%   - State the scope boundary (what is and is not in this work)
+
+This thesis addresses the design and hardware implementation of
+the J.83B Annex~B downstream transmit chain on the Zynq
+UltraScale+ \ac{rfsoc}~4x2, from \ac{mpegts} input to \ac{rf}
+output at a DOCSIS cable channel frequency.
+The scope is restricted to the transmit direction.
+The receive chain is not implemented in this work.
+A secondary problem is the absence of a suitable
+\ac{hdl}-Coder-generated \ac{rtl} path for J.83B Annex~B, which
+motivated the manual coding approach described in
+Section~\ref{sec:contributions}.
+
+The implemented transmit chain produces a correct \ac{rf} signal
+at the target frequency with verified spectral characteristics.
+Consumer device lock was not achieved: two independent 256-QAM
+demodulators detected the carrier but failed to acquire symbol
+lock on the \ac{rfsoc} output.
+The root cause was not identified within the scope of this thesis
+and is treated as an open problem.
 
 % ------------------------------------------------------------
 \section{Contributions}
 \label{sec:contributions}
-% TODO:
-%   - Enumerate thesis contributions as a list
-%   Contribution 1: Manual SystemVerilog RTL — J.83B Annex B
-%     TX chain — motivated by HDL Coder limitations
-%   Contribution 2: TX verification methodology —
-%     simulation + GNU Radio cross-validation + hardware EVM
-%   Contribution 3: RF diagnostic methodology —
-%     RFDC isolation + systematic hypothesis elimination
-%   Contribution 4: [NDA-TITLE system] — state generically
-%   NOTE: Consumer lock not achieved — acknowledge in problem statement
-%   NOTE: RX not implemented — state scope boundary here
-%   - Cite relevant standards used \cite{NEEDED} % [CITE NEEDED]
+
+The contributions of this thesis are:
+
+\begin{tightemize}
+
+  \item \textbf{Manual SystemVerilog \ac{rtl} implementation of
+        the J.83B Annex~B 256-QAM downstream transmit chain}
+        comprising eight custom pipeline modules, motivated by
+        \ac{hdl} Coder limitations encountered during the design
+        phase.
+
+  \item \textbf{Multi-stage hardware verification methodology}
+        using a stage-boundary golden vector framework for
+        bit-exact simulation and \ac{dma} loopback comparison
+        across all pipeline stages.
+
+  \item \textbf{\ac{rf} diagnostic methodology for \ac{rfsoc}
+        transmit systems} combining \ac{rfdc} isolation testing,
+        spectral characterization, and systematic hypothesis
+        elimination to localize the consumer device lock failure
+        to the protocol layer.
+
+  \item \textbf{An integrated J.83B Annex~B 256-QAM downstream
+        transmit system on \ac{rfsoc}} delivered as a PYNQ
+        overlay producing a continuous, gap-free output stream
+        under sustained operation.
+
+\end{tightemize}
 
 % ------------------------------------------------------------
 \section{Thesis Organization}
 \label{sec:organization}
-% TODO:
-%   - Chapter-by-chapter roadmap paragraph
-%   - CH-2: FPGA/RFSoC background
-%   - CH-3: J.83B DSP algorithm background
-%   - CH-4: TX implementation details + verification + diagnostic results
-%   - CH-5: conclusions and future work
+
+Chapter~\ref{ch:fpga_background} reviews \ac{fpga} and \ac{rfsoc}
+architecture, the \ac{axi} interconnect ecosystem, the \ac{rf}
+clocking subsystem, the PYNQ framework, and the MATLAB-to-\ac{rtl}
+design workflow including \ac{hdl} Coder limitations.
+Chapter~\ref{ch:dsp_background} presents the J.83B Annex~B signal processing
+algorithm background.
+Chapter~\ref{ch:implementation} describes the transmit chain
+implementation, \ac{rfdc} configuration, and verification and
+diagnostic results.
+Chapter~\ref{ch:conclusion} summarizes the contributions and
+identifies open problems for future work.
