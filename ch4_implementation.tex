@@ -28,22 +28,86 @@
 
 \chapter{Implementation}
 \label{ch:implementation}
-% [NDA-IMPL] — chapter-level gate active
-% TODO: Chapter intro paragraph — structural overview only
-%   - High-level system block: PS + PL + RFDC + RF front-end
-%   - No architecture detail until NDA CLEAR: IMPL [4.1] received
-%   - Reference PYNQ framework existence (no internals)
+
+The ANSpect transmit chain is implemented as a PYNQ overlay on the
+RFSoC~4x2, partitioned across the \ac{ps} and \ac{pl}.
+The \ac{ps} handles initialization and data movement; the \ac{pl}
+implements the J.83B Annex~B signal processing pipeline and drives
+the on-chip \ac{rfdc} \ac{dac} to produce the \ac{rf} output.
+Sections~\ref{sec:sys_arch} through~\ref{sec:verification} describe
+each subsystem in detail.
  
 % ------------------------------------------------------------
 \section{System Architecture Overview}
 \label{sec:sys_arch}
-% [NDA-IMPL] — BLOCKED
-% TODO: Draft requires NDA CLEAR: IMPL [4.1] + handoff upload
-%   - Top-level system diagram
-%   - PS/PL partition overview
-%   - Data flow: UDP RX → TX chain → DAC → RF → ADC → RX chain → output
-%   - No AXI register map, no overlay internals without clearance
-\clearpage  
+% ------------------------------------------------------------
+
+Figure~\ref{fig:sys_arch_block} shows the top-level block structure
+of the ANSpect transmit system.
+The \ac{ps} sources pre-computed \ac{mpegts} data from the board
+filesystem and delivers it to the \ac{pl} pipeline via \ac{dma} in
+Scatter-Gather cyclic mode.
+The \ac{pl} pipeline performs all J.83B Annex~B signal processing on
+a single 250\,MHz fabric clock, with PL-11 supplying quasi-static
+\ac{axi}-Lite configuration to PL-06 outside the streaming data path.
+Table~\ref{tab:module_roster} identifies each module in the transmit
+chain.
+
+\begin{table}[htbp]
+  \caption{ANSpect transmit chain module roster.}
+  \label{tab:module_roster}
+  \centering
+  \small
+  \begin{tabular}{lp{2.6cm}p{8.5cm}}
+    \hline
+    ID      & Type                   & Function \\
+    \hline
+    PL-01   & Xilinx \ac{ip}         & \ac{ddr} read to \ac{axi}-Stream source \\[2pt]
+    PL-02   & Custom \ac{rtl}        & J.83B \S B.4 transport frame assembly \\[2pt]
+    PL-03   & Custom \ac{rtl}        & $(128,122)$ Reed-Solomon encoding over $\mathrm{GF}(2^{7})$ \\[2pt]
+    PL-04   & Custom \ac{rtl}        & Ramsey Type~III convolutional interleaving \\[2pt]
+    PL-05   & Custom \ac{rtl}        & J.83B \S B.5.4 data randomization \\[2pt]
+    PL-06   & Custom \ac{rtl}        & J.83B \S B.5.3 frame synchronization encoding \\[2pt]
+    PL-07   & Custom \ac{rtl}        & J.83B \S B.5.5 trellis encoding \\[2pt]
+    PL-08   & Custom \ac{rtl}        & 256-QAM constellation mapping \\[2pt]
+    PL-09   & Xilinx \ac{ip}         & ${\times}6$ \ac{srrc} pulse-shaping interpolation \\[2pt]
+    PL-11   & Custom \ac{rtl}        & \ac{axi}-Lite boot-time configuration registers \\[2pt]
+    RFDC-01 & Xilinx \ac{ip}         & $40{\times}$ interpolation, $+$177\,MHz \ac{nco}, \ac{dac} conversion \\[2pt]
+    RF-01   & Passive board hardware & Differential-to-single-ended conversion, 50\,$\Omega$ \ac{sma} output \\
+    \hline
+  \end{tabular}
+\end{table}
+\FloatBarrier
+
+\begin{figure}[htbp]
+  % [ALT: Block diagram of the ANSpect transmit system with three
+  %  labeled layers. Top (blue): PS layer containing PS-02 and PS-03
+  %  software modules inside an ARM A53/PYNQ/DDR container. Center
+  %  (green): PL Pipeline containing PL-01 AXI DMA MM2S, grouped
+  %  PL-02 through PL-05, PL-06 FRAME_SYNC_ENC, grouped PL-07 and
+  %  PL-08, PL-09 SRRC_FIR_TX, a CDC FIFO with separate Write and
+  %  Read ports, and PL-11 anspect_ctrl_regs as a sidecar. Bottom
+  %  (yellow): RFDC DAC layer containing RFDC-01 DAC_B Tile228 and
+  %  RF-01 balun+SMA. Thick solid arrows show AXI-Stream data path
+  %  from PS through PL to RFDC. Thin solid lines labeled 250 MHz
+  %  PL clock and 32.1632 MHz RFDC-DAC clock show clock distribution.
+  %  Dashed lines show AXI-Lite control paths from PS to PL-01 and
+  %  RFDC-01, and from PL-11 to PL-06.]
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/ch4/ch4_sys_arch_block}
+  \caption{ANSpect transmit system block diagram.
+           Thick solid lines: \ac{axi}-Stream data path.
+           Thin solid lines: clock distribution
+           (250\,MHz \ac{pl} fabric; 32.163\,MHz \ac{rfdc}
+           \ac{dac} fabric).
+           Dashed lines: \ac{axi}-Lite control.
+           The RFDC-01 to RF-01 connection is analog \ac{rf}
+           (differential balun input).}
+  \label{fig:sys_arch_block}
+\end{figure}
+
+\FloatBarrier
+%\clearpage  
 % ------------------------------------------------------------
 \section{Processing System}
 \label{sec:ps}
