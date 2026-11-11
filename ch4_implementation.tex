@@ -47,10 +47,17 @@
 % ------------------------------------------------------------
 \section{Processing System}
 \label{sec:ps}
-% [NDA-IMPL] — BLOCKED
-% TODO: Draft requires NDA CLEAR: IMPL [4.2] + handoff upload
-%   - PS subsystem structural overview only
-%   - No Python driver detail, no DMA control code without clearance
+
+The \ac{ps} of the ANSpect overlay performs system initialization and
+data movement for the transmit chain.
+Two software modules execute on the ARM Cortex-A53 \ac{apu} under
+the PYNQ Linux environment via a Jupyter notebook hosted on the
+board~\cite{PYNQ_DOC,AMD_UG1085}: PS-02
+(\texttt{j83b\_tx\_chain()}) carries out \ac{rf} clock bring-up,
+bitstream load, \ac{rfdc} tile validation, and \ac{ddr} buffer
+allocation; PS-03 (DMA MM2S kick) configures and starts a
+scatter-gather \ac{dma} channel that streams the transmit data
+buffer to the \ac{pl} pipeline in continuous cyclic mode.
 
 \subsection{UDP/GigE RX}
 \label{subsec:ps_udp_rx}
@@ -266,6 +273,7 @@ never takes effect during operation (Section~\ref{subsec:dac_tile228}).
     \hline
   \end{tabular}
 \end{table}
+\FloatBarrier
 
 No formal testbench exists; verification is performed via notebook
 execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
@@ -467,21 +475,28 @@ monitoring is performed by polling
     \hline
   \end{tabular}
 \end{table}
+\FloatBarrier
 
 No formal testbench exists; verification is performed via notebook
 execution on the \ac{rfsoc}~4x2~\cite{PYNQ_DOC}.
 All nine checks passed on hardware.
 
 %\clearpage 
+
+% ------------------------------------------------------------
+\section{Programmable Logic TX Chain}
+\label{sec:pl}
 % ------------------------------------------------------------
 
-\section{Programmable Logic: TX Chain}
-\label{sec:pl_tx}
-
-This section documents the \ac{pl} modules that compose the
-J.83B Annex~B transmit chain, one subsection per module.
-Each subsection follows the standard template: interface, architecture,
-interface contract, resource utilization, and verification.
+The \ac{pl} transmit chain implements the J.83B Annex~B downstream
+processing pipeline as an \ac{axi}-Stream-coupled modules running on a
+single 250\,MHz fabric clock with a shared synchronous active-low reset.
+Eight modules are custom \ac{rtl} (\texttt{.sv}); two are Xilinx catalog
+\ac{ip}: \mbox{PL-01} (AXI DMA MM2S, \texttt{axi\_dma}~v7.1) and
+\mbox{PL-09} (FIR Compiler v7.2, ${\times}6$ interpolation).
+A separate \ac{axi}-Lite register file (PL-11) supplies quasi-static
+boot-time configuration to downstream pipeline modules without
+participating in the streaming data path.
 
 \subsection{PL-01: AXI DMA MM2S}
 \label{subsec:pl01}
@@ -5205,13 +5220,20 @@ to this application.
 
 \section{Verification and Results}
 \label{sec:verification}
-% STATUS: MIXED — see per-subsection gates below
-% TODO: Section intro paragraph
-%   - Overview of verification progression:
-%     unit sim → integration sim → board (PL) →
-%     RFDC isolation → full system → lock evaluation
-%   - TX-only scope — 26-Oct-2026
-%   - Public stage map existence may be referenced here
+
+Verification proceeded in five stages: unit simulation per module
+(Sections~\ref{subsec:pl02}--\ref{subsec:pl11}), integration
+simulation across incremental chain boundaries
+(Section~\ref{subsec:integration_sim}), board validation of each
+integration boundary and the full PL-01 through PL-09 chain
+(Section~\ref{subsec:txchain_board}), \ac{rfdc} subsystem isolation
+(Section~\ref{subsec:rfdc_isolation}), and full end-to-end system
+validation from \ac{ps} to \ac{rf} output
+(Section~\ref{subsec:system_validation}).
+The full system validation produced a correct \ac{rf} signal but did
+not achieve consumer device lock; candidate causes and open
+hypotheses are discussed in
+Sections~\ref{subsec:lock_failure}~and~\ref{subsec:open_hypotheses}.
 
 \subsection{Test Vector Framework}
 \label{subsec:test_vectors}
@@ -5228,6 +5250,7 @@ to this application.
 %   - Internal content detail
 %   - Mismatch analysis results
 %   - Requires NDA CLEAR: IMPL [4.8.1] + handoff
+This section will be removed
 
 \subsection{Integration Simulation}
 \label{subsec:integration_sim}
@@ -5408,27 +5431,26 @@ Section~\ref{sec:rfdc}. % label: match §4.4 RFDC label
 \leavevmode\par
 
 The HDHomeRun demodulator acquired full lock on the passthrough
-signal (Table~\ref{tab:rfdc_isolation}).
+signal, as shown in Figure~\ref{fig:hdhomerun_rfdc_lock}.
 All demodulator quality metrics reached their maximum values,
 confirming correct \ac{nco} tuning, interpolation and decimation
 ratios, and clock-domain crossing behavior.
+The zero network rate reflects the absence of a downstream Ethernet
+consumer during the test, not a signal deficiency.
 
-\begin{table}[htbp]
-  \caption{HDHomeRun demodulator status -- \ac{rfdc} passthrough.}
-  \label{tab:rfdc_isolation}
+\begin{figure}[htbp]
+  % [ALT: HDHomeRun Config GUI showing Tuner0 locked to us-cable
+  %  channel 7. Physical Channel reads qam256:7. Signal Strength,
+  %  Signal Quality, and Symbol Quality all show 100% with green
+  %  bars. Program field shows 1: 1.1 TF HD1.]
   \centering
-  \small
-  \begin{tabular}{lll}
-    \hline
-    Metric & Value & Assessment \\
-    \hline
-    Lock      & \texttt{qam256} & Acquired \\[2pt]
-    Signal Strength (\texttt{ss})  & 100 & Pass \\[2pt]
-    SNQ (\texttt{snq})             & 100 & Pass \\[2pt]
-    Sequence Quality (\texttt{seq})& 100 & Pass \\
-    \hline
-  \end{tabular}
-\end{table}
+  \includegraphics[width=0.5\linewidth]{figures/ch4/hdhomerun_rfdc_lock}
+  \caption{HDHomeRun Config GUI -- \ac{rfdc} passthrough lock
+           result. Physical channel: \texttt{qam256:7}; signal
+           strength, signal quality, and symbol quality all at
+           100\,\%.}
+  \label{fig:hdhomerun_rfdc_lock}
+\end{figure}
 
 The \ac{rfdc} subsystem configuration meets ANSpect requirements.
 The analog \ac{rf} signal path is confirmed correct and is
@@ -5459,7 +5481,7 @@ The 99\,\% occupied bandwidth was 5.526\,MHz, contained within the
 6.000\,MHz DOCSIS channel allocation.
 The spectral shape exhibits a flat passband with steep roll-off edges
 consistent with the \ac{srrc} pulse-shaping filter implemented in
-PL-09 (Section~\ref{subsec:srrc_tx}).
+PL-09 (Section~\ref{subsec:pl09}).
 Figures~\ref{fig:anritsu_ch_power} and~\ref{fig:anritsu_occ_bw} show
 the channel-power and occupied-bandwidth captures, respectively.
 
@@ -5468,7 +5490,8 @@ the channel-power and occupied-bandwidth captures, respectively.
   %  177.0 MHz showing a flat-top 256-QAM signal with steep SRRC
   %  roll-off on both edges. Channel power integration box spans
   %  6.000 MHz. Measured channel power: -28.6 dBm.]
-  \includegraphics[width=.65\linewidth]{figures/ch4/anritsu_ch_power}
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/ch4/anritsu_ch_power}
   \caption{Anritsu MS2721B channel-power measurement at 177.0\,MHz
            (DOCSIS cable channel~7). Integration bandwidth:
            6.000\,MHz; measured channel power: $-$28.6\,dBm;
@@ -5480,7 +5503,8 @@ the channel-power and occupied-bandwidth captures, respectively.
   % [ALT: Anritsu MS2721B occupied bandwidth measurement at
   %  177.0 MHz. Vertical markers indicate 99% power boundaries.
   %  Occupied bandwidth reads 5.526 MHz; XdB = 5.8 dB.]
-  \includegraphics[width=.65\linewidth]{figures/ch4/anritsu_occ_bw}
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/ch4/anritsu_occ_bw}
   \caption{Anritsu MS2721B occupied-bandwidth measurement at
            177.0\,MHz. 99\,\% power bandwidth: 5.526\,MHz;
            measured X\,dB: 5.8\,dB.}
@@ -5493,27 +5517,224 @@ the channel-power and occupied-bandwidth captures, respectively.
 
 The HDHomeRun HDFX-2US was connected to the \ac{rf} output and tuned
 to 177.0\,MHz.
-The device reported \texttt{lock=none}, indicating that the transmitted
-signal did not achieve 256-QAM demodulator lock under the full-system
-configuration.
+The device reported \texttt{lock=none}, as shown in
+Figure~\ref{fig:hdhomerun_full_system}: signal strength reached
+100\,\% confirming carrier detection at 177.0\,MHz, while signal
+quality and symbol quality remained at 0\,\%, indicating that
+256-QAM demodulator lock was not achieved.
+The physical channel field read \texttt{auto:7}, confirming that
+the device detected \ac{rf} energy but could not resolve the
+modulation type.
+The zero network rate reflects the absence of a downstream Ethernet
+consumer during the test.
 Investigation of candidate causes is presented in
 Section~\ref{subsec:lock_failure}.
 
+\begin{figure}[htbp]
+  % [ALT: HDHomeRun Config GUI showing Tuner0 on us-cable channel 7.
+  %  Physical Channel reads auto:7. Signal Strength shows 100% in
+  %  green. Signal Quality and Symbol Quality both show 0% with no
+  %  green fill. Program field is empty. Network Target reads none.]
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/ch4/hdhomerun_full_system}
+  \caption{HDHomeRun Config GUI -- full system validation lock
+           result. Physical channel: \texttt{auto:7}; signal
+           strength 100\,\%; signal quality and symbol quality
+           0\,\%. 256-QAM lock not achieved.}
+  \label{fig:hdhomerun_full_system}
+\end{figure}
+\FloatBarrier
+
 \subsection{Consumer Device Lock Failure}
 \label{subsec:lock_failure}
-% STATUS: OPEN — draftable from diagnostic reports
-% TODO:
-%   - Two independent consumer receivers failed identically:
-%     HDHomeRun + Samsung F6000F
-%   - Summary table: hypotheses closed (H6–H12 + others)
-%     Columns: ID / Hypothesis / Status / Evidence
-%   - Conclusion: root cause not identified within thesis scope
-%   - Pointer to §\ref{subsec:open_hypotheses}
+
+Two independent consumer demodulators were tested against both the
+Thor H-Thunder-1 J.83B reference and the \ac{rfsoc} Tx chain
+output under identical cable path conditions.
+Table~\ref{tab:device_lock} gives the lock results for both devices.
+
+\begin{table}[htbp]
+  \caption{Consumer demodulator lock results, Thor reference versus
+           \ac{rfsoc} Tx output.}
+  \label{tab:device_lock}
+  \centering
+  \small
+  \begin{tabular}{llll}
+    \hline
+    Device & Source & Lock & Quality \\
+    \hline
+    HDHomeRun HDFX-2US & Thor       & \texttt{qam256} & snq\,=\,100       \\[2pt]
+    HDHomeRun HDFX-2US & \ac{rfsoc} & \texttt{none}   & snq\,=\,0         \\[2pt]
+    Samsung F6000F TV  & Thor       & Lock            & SNR\,=\,38\,dB    \\[2pt]
+    Samsung F6000F TV  & \ac{rfsoc} & Unlock          & SNR\,=\,0\,dB     \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Both devices produced the same failure on the \ac{rfsoc} output.
+The two devices use different demodulator silicon from different
+manufacturers; identical failure on both rules out a
+device-specific compatibility issue and confirms a signal-level
+compliance problem in the transmitted bitstream.
+
+\FloatBarrier
+\paragraph{Diagnostic Gate.}
+\leavevmode\par
+
+Spectrum measurements confirmed that the \ac{rfsoc} Tx signal
+matched the Thor reference on all \ac{rf}-layer parameters: center
+frequency, channel power, occupied bandwidth, spectral shape, and
+out-of-band emissions.
+Signal strength at the HDHomeRun input reached 100\,\% under
+\ac{rfsoc} drive, confirming that the carrier was detected at the
+correct frequency and power level.
+The demodulator failure despite a correct \ac{rf} signal indicates
+a protocol-layer issue in the J.83B bitstream rather than an analog
+or spectral defect.
+
+\FloatBarrier
+\paragraph{Hypothesis Investigation.}
+\leavevmode\par
+
+Thirteen hypotheses were investigated.
+All were closed without identifying the root cause.
+Table~\ref{tab:hypotheses} summarizes each hypothesis and its
+closure evidence.
+
+\begin{table}[htbp]
+  \caption{Hypothesis investigation summary. All hypotheses closed.}
+  \label{tab:hypotheses}
+  \centering
+  \footnotesize
+  \begin{tabular}{lp{3.8cm}p{9.5cm}}
+    \hline
+    No. & Hypothesis & Closure evidence \\
+    \hline
+    1
+      & \ac{rfdc} CoarseMixFreq configuration
+      & Runtime readback confirmed CoarseMixFreq=16 (BYPASS),
+        MixerMode=2 (IQ), NCO=177.000\,MHz. \\[4pt]
+    2
+      & Bitstream integrity after chain change
+      & No bitstream change was made. Stale premise. \\[4pt]
+    3
+      & I and Q lanes swapped at mapper output
+      & Rebuilt bitstream with I and Q swapped.
+        snq=0 unchanged. \\[4pt]
+    4
+      & One axis of I/Q negated
+      & \ac{rfdc} Neg\_Quadrature enabled, bitstream rebuilt.
+        snq=0 unchanged. \\[4pt]
+    5
+      & Spectral inversion at upconversion
+      & \ac{nco} set to $-$177\,MHz via Python.
+        snq=0 unchanged. Spectrum identical. \\[4pt]
+    6
+      & Constellation map quadrant error
+      & Manual 256-entry trace against SCTE J.83B Fig.\,B.19.
+        All 256 entries matched. \\[4pt]
+    7
+      & MPEG-TS loop discontinuity at descriptor wrap
+      & \ac{axi} DMA in SG Cyclic mode with real captured
+        MPTS, 2+ min continuous. snq=0 persists. \\[4pt]
+    8
+      & TX gap from single-shot \ac{dma}
+      & \ac{axi} DMA in SG Cyclic mode, 2+ min continuous.
+        snq=0 persists. \\[4pt]
+    9
+      & Synthetic test vector content
+      & Real Thor-captured MPTS substituted.
+        snq=0 unchanged. \\[4pt]
+    10
+      & Incorrect frequency table entry
+      & Direct \texttt{qam256:177000000} tuning used,
+        bypassing frequency table. lock=none. \\[4pt]
+    11
+      & Control word encoding (CW=0 vs.\ CW=1)
+      & CW=1 test vectors regenerated and deployed.
+        TV and HDHomeRun both unchanged. \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+
+No hypothesis accounted for the observed failure.
+The root cause of the consumer device lock failure was not
+identified within the scope of this thesis.
+Remaining open candidates are presented in
+Section~\ref{subsec:open_hypotheses}.
 
 \subsection{Open Hypotheses}
 \label{subsec:open_hypotheses}
-% STATUS: OPEN — BLOCKED: hypothesis list pending from author
-% TODO: Author to supply complete list of unverified hypotheses
-%   - Table format: ID / Hypothesis / Status / Evidence needed
-%   - Do NOT assert any hypothesis as root cause
-%   - Pointer to §\ref{sec:future_work} for resolution path
+
+The following items were not resolved within the scope of this
+thesis and are presented as candidates for future investigation.
+
+\textit{Unresolved technical hypotheses:}
+\begin{tightemize}
+
+  \item \textbf{FEC frame sync pattern.}
+        J.83B frame acquisition relies on detection of a unique
+        sync pattern at the receiver.
+        Whether the transmitted sync pattern satisfies all receiver
+        acquisition requirements was not verified within thesis scope.
+
+  \item \textbf{Constellation point precision.}
+        J.83B specifies 8-bit representation for 256-QAM constellation
+        points.
+        The current implementation uses higher numerical precision.
+        Compliance with the fixed-point width requirement is unverified.
+
+  \item \textbf{SRRC interpolation rate.}
+        J.83B does not specify a pulse-shaping interpolation rate.
+        The 6$\times$ interpolation factor was chosen to satisfy the
+        \ac{rfdc} fabric rate requirement but its compliance with the
+        standard is unproven.
+        Without \ac{srrc} interpolation, the \ac{rfdc} fabric rate would
+        be 5.360537\,Msps; at maximum \ac{rfdc} interpolation (40$\times$)
+        the \ac{dac} converter rate would be 214.4\,Msps, below the
+        minimum operating frequency.
+        The diagnostic cannot be executed on this platform.
+
+  \item \textbf{Clock tree and symbol rate.}
+        The 250\,MHz \ac{pl} clock is not a rational multiple of the
+        J.83B symbol rate (5.360537\,Msym/s).
+        Whether a spec-aligned clock relationship is required for
+        receiver acquisition is unverified.
+        Stream continuity measurements confirm a gap-free output at
+        32.163\,Msps but do not resolve the clock relationship question.
+
+  \item \textbf{Constellation map independent verification.}
+        A manual 256-entry trace of the constellation map against
+        SCTE J.83B Fig.\,B.19 was performed and all entries appeared
+        correct.
+        Manual comparison is error-prone at 256 entries.
+        Independent algorithmic verification is not possible without
+        a hardware loopback lock.
+
+  \item \textbf{ANSpect spec audit.}
+        Independent verification of the \ac{rs} encoder, convolutional
+        interleaver, randomizer, and frame synchronization encoder
+        against the J.83B specification was requested from ANSpect
+        but not received within thesis scope.
+
+\end{tightemize}
+
+\textit{Investigations constrained by unavailable equipment:}
+\begin{tightemize}
+
+  \item \textbf{Spec-compliant J.83B receiver.}
+        The HDHomeRun HDFX-2US and Samsung F6000F TV produce binary
+        lock results only.
+        A spec-compliant J.83B software receiver would identify which
+        layer of the transmitted bitstream diverges from the standard.
+        No such tool was available within thesis scope.
+
+  \item \textbf{QAM constellation visualization.}
+        Constellation analysis of the transmitted 256-QAM signal
+        requires a cable signal analyzer with 256-QAM demodulation
+        capability.
+        The Anritsu MS2721B provides spectrum analysis only.
+        No compatible instrument was available.
+\end{tightemize}
