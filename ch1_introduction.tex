@@ -29,16 +29,17 @@ organization.
 
 The Xilinx Zynq UltraScale+ \ac{rfsoc} integrates multi-gigasample
 \ac{dac} and \ac{adc} converters directly on the \ac{pl} die,
-making it a practical platform for cable and broadcast
-physical-layer prototyping~\cite{AMD_UG1085,Kovacs2024,Javaid2022}
-No open academic implementation of the J.83B Annex~B 256-QAM
-downstream \ac{phy} on an \ac{rfsoc} platform has been published,
-despite DOCSIS~3.0 remaining the predominant downstream physical
-layer for cable modem infrastructure~\cite{ITU_J83,DOCSIS3}.
+making it a practical platform for cable physical-layer prototyping
+without a discrete \ac{rf} front-end~\cite{AMD_UG1085,Kovacs2024,Javaid2022}.
+ANSpect Technologies selected the \ac{rfsoc}~4x2 as the development
+platform for a proprietary \ac{phy}-layer cable channel product that
+requires a compliant J.83B Annex~B 256-QAM downstream transmit chain
+as its host signal path.
+This thesis documents the design and implementation of that transmit chain.
 The standard MATLAB \ac{hdl} Coder toolchain path~\cite{HDLCoder}
-introduced fixed-point conversion overhead and integration
-constraints that made the generated \ac{rtl} unsuitable for
-direct deployment, motivating a manual SystemVerilog implementation.
+introduced fixed-point conversion overhead and integration constraints
+that made the generated \ac{rtl} unsuitable for direct deployment,
+motivating a manual SystemVerilog implementation.
 
 % ------------------------------------------------------------
 \section{Problem Statement}

@@ -136,15 +136,48 @@
 \maketitle               % Title Page
 
 \begin{acks}{December 2026}
-  % TODO: Acknowledgments — complete sentences and paragraphs
-  % No \section commands inside acks environment
+  I would like to express my sincere gratitude to my advisor,
+  Dr.\ Benjamin Carrion Schaefer, for his guidance, patience,
+  support, and trust in me throughout this project.
+
+  I also thank my committee members, Dr.\ Dinesh Bhatia and
+  Dr.\ William Swartz, for serving on my thesis committee.
+
+  I am grateful to ANSpect for entrusting me with this project,
+  and for the hardware support and encouragement that made
+  independent implementation possible.
+
+  I also thank the members of DARCLab for their advice
+  and support throughout this work.
 \end{acks}
 
 \begin{abstract}
-  % TODO: ≤500 words — continuous prose — no bullets
-  % Run 'word count abstract [tex]' before submission
-  % Title must match title page exactly
-  % Author name must match all other pages
+  The J.83B Annex~B standard defines the North American downstream
+  physical layer for digital video transmission over hybrid
+  fiber-coaxial cable networks, specifying a 256-QAM single-carrier
+  modulation scheme at 5.360537\,Msym/s within a 6\,MHz channel
+  allocation. This thesis presents the design, implementation, and
+  verification of a complete J.83B Annex~B downstream transmit chain
+  on the Xilinx Zynq~UltraScale+ RFSoC~4x2 platform, targeting
+  delivery of a modulated RF signal at 177\,MHz from an MPEG-TS
+  input stream.
+
+  The system partitions across the three RFSoC~4x2 subsystems:
+  the Processing System handles control and data movement; the
+  Programmable Logic implements the full J.83B pipeline in custom
+  SystemVerilog at 250\,MHz; and the RF Data Converter performs
+  interpolation, digital upconversion, and DAC conversion to produce
+  the RF output.
+
+  Verification confirmed a continuous gap-free output stream under
+  sustained operation, a correct RF signal at 177\,MHz with spectral
+  shape consistent with the J.83B specification, and correct analog
+  signal path behavior via an RF Data Converter isolation test.
+
+  Consumer device lock was not achieved. Thirteen candidate hypotheses
+  were systematically investigated and eliminated, localizing the
+  failure to the protocol layer. Six hypotheses remain open as
+  directions for future work.
 \end{abstract}
 
 \tableofcontents
@@ -199,24 +232,88 @@
 
 % Biographical Sketch
 \begin{biosketch}
-  % TODO: third-person biographical sketch
-  % May include: education, degrees, publications, experience
-  % No \section commands inside biosketch environment
   Sathwik Sudhindranath received the B.E.\ degree in Electronics
   and Communication Engineering from Visvesvaraya Technological
-  University, India, in 2021. He is currently pursuing the M.S.\
-  degree in Electrical Engineering with a concentration in
-  Computing Systems at The University of Texas at Dallas,
-  Richardson, Texas, expected December 2026.
-  % TODO: add publications, industry experience, or awards if any
+  University, India, in 2021. Following graduation, he worked at
+  Tata Consultancy Services Ltd.\ as a Software Developer for
+  three and a half years. In 2025, he entered the Electrical
+  Engineering graduate program at The University of Texas at
+  Dallas, Richardson, Texas, with a concentration in Computing
+  Systems. During his graduate studies, he conducted research
+  under Dr.\ Benjamin Carrion Schaefer on an industry-sponsored
+  project with ANSpect, implementing a J.83B Annex~B downstream
+  transmit chain on the Xilinx Zynq~UltraScale+ RFSoC~4x2
+  platform. He expects to receive the M.S.\ degree in December
+  2026.
 \end{biosketch}
 
 % Curriculum Vitae — pages unnumbered, listed in TOC
 \begin{vita}
-  % TODO: CV content
-  % No special formatting requirements
-  % External CV pages may be substituted at print time
-  % (must still issue \begin{vita}...\end{vita} for TOC entry)
+  \begin{center}
+    {\large Sathwik Sudhindranath} \\[6pt]
+    sathwik.sudhindranath@utdallas.edu \quad
+    linkedin.com/in/sathwik-sudhindranath
+  \end{center}
+
+  \vspace{12pt}
+  \noindent\textbf{EDUCATION}
+  \vspace{4pt}
+
+  \noindent The University of Texas at Dallas, Richardson, Texas
+  \hfill Expected Dec 2026 \\
+  Master of Science, Electrical Engineering \hfill GPA: 3.95
+
+  \vspace{6pt}
+  \noindent SJB Institute of Technology, Bangalore, India
+  \hfill Aug 2021 \\
+  Bachelor of Engineering, Electronics and Communication
+  \hfill CGPA: 8.41
+
+  \vspace{12pt}
+  \noindent\textbf{RESEARCH INTERESTS}
+  \vspace{4pt}
+
+  \noindent FPGA/RFSoC implementation; RTL design;
+  digital signal processing hardware; hardware accelerators
+
+  \vspace{12pt}
+  \noindent\textbf{GRADUATE RESEARCH}
+  \vspace{4pt}
+
+  \noindent Research Assistant, DARCLab,
+  The University of Texas at Dallas
+  \hfill Jan 2025 -- Dec 2026 \\
+  Advisor: Dr.\ Benjamin Carrion Schaefer \\
+  Implemented a J.83B Annex~B 256-QAM downstream transmit chain
+  on the Xilinx Zynq~UltraScale+ RFSoC~4x2 platform in custom
+  SystemVerilog RTL, under an industry-sponsored project with
+  ANSpect.
+
+  \vspace{12pt}
+  \noindent\textbf{PROFESSIONAL EXPERIENCE}
+  \vspace{4pt}
+
+  \noindent Tata Consultancy Services Ltd., Bangalore, India
+  \hfill Aug 2021 -- Jan 2025 \\
+  Software Developer
+
+  \vspace{12pt}
+  \noindent\textbf{TECHNICAL SKILLS}
+  \vspace{4pt}
+
+  \noindent\textit{Languages:} SystemVerilog, Verilog, Python,
+  MATLAB, C/C++, PowerShell \\
+  \textit{Tools:} AMD Vivado, Questa/ModelSim,
+  Intel Quartus Prime, PYNQ \\
+  \textit{Platforms:} Xilinx Zynq~UltraScale+ RFSoC,
+  Terasic DE1-SoC (Altera Cyclone~V)
+
+  \vspace{12pt}
+  \noindent\textbf{LANGUAGES}
+  \vspace{4pt}
+
+  \noindent English, Hindi, Kannada
+
 \end{vita}
 
 \end{document}
