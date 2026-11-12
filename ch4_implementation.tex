@@ -10,22 +10,6 @@
 % v1.0  01-Sep-2026  Split from chapters.tex
 % ============================================================
 
-% ============================================================
-% CHAPTER 4 — IMPLEMENTATION
-% STATUS: NDA-IMPL — CHAPTER GATED
-%
-% GATE REQUIREMENTS (all must be met before any section drafts):
-%   1. NDA CLEAR: IMPL [section] received for that section
-%   2. Handoff file for that module uploaded in current session
-%   3. Content sourced exclusively from handoff file
-%   4. nda scrub run on all output before delivery
-%
-% EXCEPTION: Section 4.8 (Test and Measurement) — OPEN
-%   4.8.1 H-Thunder-1 — public product spec
-%   4.8.2 HDHomeRun    — public product
-%   4.8.3 Spectrum analysis — general methodology
-% ============================================================
-
 \chapter{Implementation}
 \label{ch:implementation}
 
@@ -109,6 +93,7 @@ chain.
 \FloatBarrier
 %\clearpage  
 % ------------------------------------------------------------
+
 \section{Processing System}
 \label{sec:ps}
 
@@ -123,11 +108,11 @@ allocation; PS-03 (DMA MM2S kick) configures and starts a
 scatter-gather \ac{dma} channel that streams the transmit data
 buffer to the \ac{pl} pipeline in continuous cyclic mode.
 
-\subsection{UDP/GigE RX}
-\label{subsec:ps_udp_rx}
+%\subsection{UDP/GigE RX}
+%\label{subsec:ps_udp_rx}
 % [NDA-IMPL] — BLOCKED (PS-01)
 % TODO: Requires NDA CLEAR: IMPL [4.2.1] + handoff for PS-01
-This section will be removed.
+%This section will be removed.
 
 % ============================================================
 % CH-4.2.2  PS-02: j83b_tx_chain()
@@ -258,7 +243,7 @@ in-flight frame trailer within one clock cycle
 this race.
 
 \textit{Steps 6--7: tile check and \ac{nco} enforce.}
-\texttt{TileState}~$< 15$ indicates a design indicates a design fault (misconfigured
+\texttt{TileState}~$< 15$ indicates a design fault (misconfigured
 overlay or clock failure) and halts execution with no runtime
 recovery path.
 Steps~1--3 must be verified before re-attempting.
@@ -548,6 +533,7 @@ All nine checks passed on hardware.
 %\clearpage 
 
 % ------------------------------------------------------------
+
 \section{Programmable Logic TX Chain}
 \label{sec:pl}
 % ------------------------------------------------------------
@@ -4012,15 +3998,15 @@ Section~\ref{subsec:txchain_board}.
 
 %\clearpage
 
-\subsection{PL-10: SD-FEC LDPC}
-\label{subsec:pl10}
+%\subsection{PL-10: SD-FEC LDPC}
+%\label{subsec:pl10}
 % [NDA-IMPL] — BLOCKED
 % [NDA-ALGO] — LDPC interaction with O-EMA overlay
 %              PERMANENTLY BLOCKED — never draftable
 % TODO: Structural existence may be acknowledged only
 %   - Internal algorithm: hard block, do not draft or paraphrase
 %   - Requires NDA CLEAR: IMPL [4.3.10] for structural frame only
-This section will be removed.
+%This section will be removed.
 
 \subsection{PL-11: \texttt{anspect\_ctrl\_regs} AXI-Lite Register File}
 \label{subsec:pl11}
@@ -4279,11 +4265,11 @@ Section~\ref{subsec:txchain_board}.
 
 %\clearpage
 
-\subsection{PL-12: IQ Combiner}
-\label{subsec:pl12}
+%\subsection{PL-12: IQ Combiner}
+%\label{subsec:pl12}
 % [NDA-IMPL] — BLOCKED
 % TODO: Requires NDA CLEAR: IMPL [4.3.12] + handoff for PL-12
-This section will be removed.
+%This section will be removed.
 \clearpage  
 % ------------------------------------------------------------
 
@@ -5177,6 +5163,63 @@ in which the HDHomeRun consumer receiver reported \texttt{lock=qam256}
 at 177MHz center frequency.
 % ------------------------------------------------------------
 
+% ------------------------------------------------------------
+% §4.7  Full TX Chain: Resource and Timing Summary
+% Source : Production Vivado implementation report (.rpt)
+%          Vivado BD screenshot
+% NDA CLEAR: IMPL [4.7] — PENDING
+% Preflight : CH-4.7 — PENDING
+% Expanded  : PENDING
+% ------------------------------------------------------------
+
+\section{Full TX Chain: Resource and Timing Summary}
+\label{sec:tx_chain_summary}
+
+% TODO: 1–2 sentence intro: purpose = single reference point for
+%       full ZU48DR resource fit + timing closure of production build;
+%       forward-ref §4.2–§4.6 individual module tables
+
+% ------------------------------------------------------------
+\subsection{Vivado Block Design}
+\label{subsec:bd_overview}
+% ------------------------------------------------------------
+
+% TODO: \begin{figure} block — BD screenshot
+%       ALT text: full top-level Vivado IP Integrator block design
+%       showing PS layer, PL pipeline (PL-01–PL-11), CDC FIFO,
+%       RFDC IP, AXI-Stream data path, AXI-Lite control paths,
+%       clock distribution
+% TODO: 1–2 sentences: what the block design shows and how it
+%       maps to the module roster in Table~\ref{tab:module_roster}
+
+% ------------------------------------------------------------
+\subsection{Aggregate Resource Utilization}
+\label{subsec:aggregate_util}
+% ------------------------------------------------------------
+
+% TODO: Table — full production build resource utilization
+%       Columns: Resource | Used | Available | Utilization %
+%       Rows: LUT (Logic), LUT (Memory/SRL), FF, BRAM, DSP,
+%             UltraRAM, BUFG/BUFGCE
+%       + sub-breakdown by group: PS infra | PL pipeline | RFDC IP
+%       Source: production .rpt
+% TODO: 1–2 sentences: total headroom vs. ZU48DR capacity;
+%       dominant consumer (expected: RFDC IP wrapper or PL-09 DSP)
+
+% ------------------------------------------------------------
+\subsection{Top-Level Timing Summary}
+\label{subsec:toplevel_timing}
+% ------------------------------------------------------------
+
+% TODO: Table — production implementation timing at 250 MHz
+%       Columns: Clock | Frequency | WNS | WHS | TNS | Status
+%       Rows: pl_clk (250 MHz), s_axi_aclk (100 MHz),
+%             s0_axis_aclk (32.163 MHz), clk_dac0 (40.204 MHz)
+%       Source: production .rpt
+% TODO: 1 sentence: confirms timing closure of fully integrated
+%       design; note any marginal paths carried forward from
+%       isolation results (e.g. RFDC s_axi hold slack)
+
 \section{Test Equipment}
 \label{sec:test_equipment}
 
@@ -5299,8 +5342,8 @@ not achieve consumer device lock; candidate causes and open
 hypotheses are discussed in
 Sections~\ref{subsec:lock_failure}~and~\ref{subsec:open_hypotheses}.
 
-\subsection{Test Vector Framework}
-\label{subsec:test_vectors}
+%\subsection{Test Vector Framework}
+%\label{subsec:test_vectors}
 % STATUS: PARTIAL — public stage map freely draftable;
 %         mismatch analysis = [NDA-IMPL] gate
 % TODO (PUBLIC — draftable now):
@@ -5314,7 +5357,7 @@ Sections~\ref{subsec:lock_failure}~and~\ref{subsec:open_hypotheses}.
 %   - Internal content detail
 %   - Mismatch analysis results
 %   - Requires NDA CLEAR: IMPL [4.8.1] + handoff
-This section will be removed
+%This section will be removed
 
 \subsection{Integration Simulation}
 \label{subsec:integration_sim}
