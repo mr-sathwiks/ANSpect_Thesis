@@ -39,6 +39,8 @@
 % v1.8  08-Nov-2026  Added tightemize environment — compact itemize for CH-4
 %                    module lists; suppresses utdthesis doublespacing bleed-through
 %                    in \begin{itemize} blocks. No setspace pkg — UTD compliant.
+% v1.9  12-Nov-2026  Title finalized — NDA-TITLE cleared;
+%                    \title, abstract, biosketch, vita updated to match.
 % ============================================================
 
 \documentclass[doublespacing]{utdthesis}
@@ -99,7 +101,8 @@
 % THESIS METADATA — fill all [PENDING] before submission
 % ------------------------------------------------------------
 \author{Sathwik Sudhindranath}
-\title{RFSoC 4x2 FPGA Implementation ANSpect O-EMA\texttrademark{} j.83B Tx [NDA-TITLE]}
+\title{Design and Implementation of J.83B Annex~B 256-QAM Transmitter
+  on the Xilinx Zynq~UltraScale+ RFSoC~4x2 FPGA}
 \thesistype{Thesis}
 \degreefull{Master of Science}
 \degreeabbr{MS}
@@ -157,10 +160,9 @@
   fiber-coaxial cable networks, specifying a 256-QAM single-carrier
   modulation scheme at 5.360537\,Msym/s within a 6\,MHz channel
   allocation. This thesis presents the design, implementation, and
-  verification of a complete J.83B Annex~B downstream transmit chain
-  on the Xilinx Zynq~UltraScale+ RFSoC~4x2 platform, targeting
-  delivery of a modulated RF signal at 177\,MHz from an MPEG-TS
-  input stream.
+  verification of a J.83B Annex~B 256-QAM transmitter on the Xilinx
+  Zynq~UltraScale+ RFSoC~4x2 FPGA, targeting delivery of a modulated
+  RF signal at 177\,MHz from an MPEG-TS input stream.
 
   The system partitions across the three RFSoC~4x2 subsystems:
   the Processing System handles control and data movement; the
@@ -241,10 +243,9 @@
   Dallas, Richardson, Texas, with a concentration in Computing
   Systems. During his graduate studies, he conducted research
   under Dr.\ Benjamin Carrion Schaefer on an industry-sponsored
-  project with ANSpect, implementing a J.83B Annex~B downstream
-  transmit chain on the Xilinx Zynq~UltraScale+ RFSoC~4x2
-  platform. He expects to receive the M.S.\ degree in December
-  2026.
+  project with ANSpect, implementing a J.83B Annex~B 256-QAM
+  transmitter on the Xilinx Zynq~UltraScale+ RFSoC~4x2 FPGA.
+  He expects to receive the M.S.\ degree in December 2026.
 \end{biosketch}
 
 % Curriculum Vitae — pages unnumbered, listed in TOC
@@ -284,10 +285,9 @@
   The University of Texas at Dallas
   \hfill Jan 2025 -- Dec 2026 \\
   Advisor: Dr.\ Benjamin Carrion Schaefer \\
-  Implemented a J.83B Annex~B 256-QAM downstream transmit chain
-  on the Xilinx Zynq~UltraScale+ RFSoC~4x2 platform in custom
-  SystemVerilog RTL, under an industry-sponsored project with
-  ANSpect.
+  Implemented a J.83B Annex~B 256-QAM transmitter on the Xilinx
+  Zynq~UltraScale+ RFSoC~4x2 FPGA in custom SystemVerilog RTL,
+  under an industry-sponsored project with ANSpect.
 
   \vspace{12pt}
   \noindent\textbf{PROFESSIONAL EXPERIENCE}
