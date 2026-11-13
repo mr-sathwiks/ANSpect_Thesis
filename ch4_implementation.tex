@@ -5163,62 +5163,174 @@ in which the HDHomeRun consumer receiver reported \texttt{lock=qam256}
 at 177MHz center frequency.
 % ------------------------------------------------------------
 
-% ------------------------------------------------------------
+% ============================================================
 % §4.7  Full TX Chain: Resource and Timing Summary
-% Source : Production Vivado implementation report (.rpt)
-%          Vivado BD screenshot
-% NDA CLEAR: IMPL [4.7] — PENDING
-% Preflight : CH-4.7 — PENDING
-% Expanded  : PENDING
-% ------------------------------------------------------------
+% NDA CLEAR: IMPL [4.7] — LOGGED
+% ============================================================
+
+% ============================================================
+% §4.7  Full TX Chain: Resource and Timing Summary
+% NDA CLEAR: IMPL [4.7] — LOGGED
+% Revision: V-01–V-12 applied (12 violations, CH-4 Surgical Reduction Playbook)
+% ============================================================
 
 \section{Full TX Chain: Resource and Timing Summary}
 \label{sec:tx_chain_summary}
 
-% TODO: 1–2 sentence intro: purpose = single reference point for
-%       full ZU48DR resource fit + timing closure of production build;
-%       forward-ref §4.2–§4.6 individual module tables
+The programmable-logic modules detailed in Section~\ref{sec:pl}
+and the clocking subsystem of Section~\ref{sec:clocking} are integrated
+into a single Vivado~2024.2 block design targeting the
+\texttt{xczu48dr\allowbreak-ffvg1517\allowbreak-2\allowbreak-e} device on the \ac{rfsoc}~4x2 platform.
+% NOTE: Adjust \ref{sec:pl_tx_chain} and \ref{sec:clocking} to match
+%       the \label{} commands in §4.3 and §4.6 as drafted.
+This section consolidates the aggregate \ac{pl} resource utilization and
+timing-closure results from the fully routed implementation, providing a
+system-level view that complements the per-module reports presented in
+Sections~\ref{subsec:pl01}--\ref{subsec:pl09}.
+% NOTE: Adjust \ref{subsec:pl01} and \ref{subsec:pl09} to match the
+%       \label{} commands used in §4.3.1 and §4.3.9.
 
-% ------------------------------------------------------------
+% ---- §4.7.1 ------------------------------------------------
 \subsection{Vivado Block Design}
 \label{subsec:bd_overview}
-% ------------------------------------------------------------
 
-% TODO: \begin{figure} block — BD screenshot
-%       ALT text: full top-level Vivado IP Integrator block design
-%       showing PS layer, PL pipeline (PL-01–PL-11), CDC FIFO,
-%       RFDC IP, AXI-Stream data path, AXI-Lite control paths,
-%       clock distribution
-% TODO: 1–2 sentences: what the block design shows and how it
-%       maps to the module roster in Table~\ref{tab:module_roster}
+% [ALT: Vivado 2024.2 IP Integrator block design of the J.83B Annex B
+%       256-QAM transmit chain on the RFSoC 4x2 (xczu48dr-ffvg1517-2-e),
+%       displaying all 20 IP cells. The AXI4-Stream data path flows from
+%       the AXI DMA MM2S (PL-01) through Transport Framing (PL-02),
+%       RS Encoder (PL-03), Convolutional Interleaver (PL-04), Randomizer
+%       (PL-05), Frame Sync Encoder (PL-06), Trellis Encoder (PL-07),
+%       QAM-256 Mapper (PL-08), and SRRC FIR TX (PL-09), crossing via a
+%       CDC FIFO (fifo_generator_tx) to the RF Data Converter. The
+%       AXI4-Lite control path runs from the Processing System M_AXI_HPM0_FPD
+%       port through two AXI SmartConnect blocks (axi_smc_ctrl and
+%       axi_smc_data) to the peripheral register file (PL-11), RFDC IP,
+%       and AXI DMA. Three clock-domain groupings are visible: the 250 MHz
+%       PL fabric clock (clk_pl_1), the 100 MHz PS configuration clock
+%       (clk_pl_0), and the 32.163 MHz DAC fabric clock (clk_out_dac)
+%       produced by the clk_wiz_dac MMCM. Three reset blocks are shown:
+%       rst_pl_250mhz (fabric), rst_ps8_0_99M (PS config), and
+%       proc_sys_reset_dac (DAC domain).]
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/ch4/full_tx_chain_bd_reduced_jog_view}
+  \caption{Vivado~2024.2 \ac{ip} Integrator block design of the
+           fully integrated J.83B Annex~B transmit chain on the
+           \ac{rfsoc}~4x2, showing all 20~\ac{ip} cells,
+           the \ac{axi}4-Stream data path (PL-01 through PL-09 and \ac{rfdc}),
+           the \ac{axi}4-Lite control path, three clock domains, and three
+           reset domains.}
+  \label{fig:full_tx_chain_bd}
+\end{figure}
 
-% ------------------------------------------------------------
+% V-01 deleted (R-1): "Figure~\ref{fig:full_tx_chain_bd} presents... 20 IP cells."
+The \ac{axi}4-Stream data path traverses nine processing stages, PL-01
+through PL-09, operating entirely within the 250\,MHz \ac{pl} fabric
+clock domain (\texttt{clk\_pl\_1}) before entering the
+\texttt{fifo\_generator\_tx} \ac{cdc} \ac{fifo}, which transfers the
+filtered \ac{iq} samples across the clock-domain boundary to the
+32.163\,MHz \ac{dac} sample-clock domain (\texttt{clk\_out\_dac})
+prior to entering the \ac{rfdc}.
+Two \ac{axi} SmartConnect blocks partition traffic by bandwidth and
+function: \texttt{axi\_smc\_data} routes the high-throughput \ac{dma}
+scatter-gather and memory-mapped-to-stream channels between PL-01 and
+the \ac{ps} \texttt{S\_AXI\_HPC0\_FPD} port, while
+\texttt{axi\_smc\_ctrl} routes low-bandwidth register-access
+transactions from the \ac{ps} \texttt{M\_AXI\_HPM0\_FPD} port to the
+peripheral register file (PL-11), the \ac{rfdc} \ac{ip}, and the
+\ac{dma} control registers.
+The \texttt{clk\_wiz\_dac} \ac{mmcm} derives the 32.163\,MHz \ac{dac}
+fabric clock from the 40.204\,MHz output of the \ac{rfdc} tile
+(\texttt{RFDAC0\_CLK}), generating the sample clock required for
+six-samples-per-symbol operation at the J.83B Annex~B 256-QAM symbol
+rate of 5.360537\,Msym/s.
+
+% ---- §4.7.2 ------------------------------------------------
 \subsection{Aggregate Resource Utilization}
 \label{subsec:aggregate_util}
-% ------------------------------------------------------------
 
-% TODO: Table — full production build resource utilization
-%       Columns: Resource | Used | Available | Utilization %
-%       Rows: LUT (Logic), LUT (Memory/SRL), FF, BRAM, DSP,
-%             UltraRAM, BUFG/BUFGCE
-%       + sub-breakdown by group: PS infra | PL pipeline | RFDC IP
-%       Source: production .rpt
-% TODO: 1–2 sentences: total headroom vs. ZU48DR capacity;
-%       dominant consumer (expected: RFDC IP wrapper or PL-09 DSP)
+\begin{table}[htbp]
+  \caption{Post-implementation aggregate resource utilization of the
+           fully integrated J.83B Annex~B transmit chain on the
+           \ac{rfsoc}~4x2 platform.
+           Source: Vivado~2024.2 placement report.}
+  \label{tab:tx_chain_util}
+  \centering
+  \begin{tabular}{lrrr}
+    \hline
+    Resource      & Used   & Available & Utilization (\%) \\
+    \hline
+    LUT Logic     & 10,795 &   425,280 & 2.54  \\
+    LUT \ac{ram}  &  1,187 &   213,600 & 0.56  \\
+    Flip-Flop     & 16,208 &   850,560 & 1.91  \\
+    \ac{bram}     &      4 &     1,080 & 0.37  \\
+    DSP48E2       &     30 &     4,272 & 0.70  \\
+    \ac{uram}     &      0 &        80 & 0.00  \\
+    \ac{mmcm}     &      1 &         8 & 12.50 \\
+    PS8           &      1 &         1 & 100.00 \\
+    \hline
+  \end{tabular}
+\end{table}
 
-% ------------------------------------------------------------
+% V-02 deleted (R-1): "As shown in Table~\ref{tab:tx_chain_util}... ample headroom."
+% V-03 deleted (R-1): "The single \ac{mmcm} instance... unallocated."
+All 30 \texttt{DSP48E2} blocks are consumed by PL-09 (the \ac{srrc}
+\ac{fir} transmit filter), which requires 30 cascaded
+multiply-accumulate stages to implement its polyphase interpolation
+filter bank at the target sample rate.
+The four \ac{bram} primitives support the \texttt{FIFO36E2}
+\ac{cdc} \ac{fifo} and the \ac{dma} scatter-gather descriptor store.
+The \ac{rfdc} block instantiates all four \ac{rfdac} and four
+\ac{rfadc} tiles at synthesis regardless of per-tile configuration.
+Only \ac{dac}-B (Tile~228) is configured for the transmit path.
+\ac{rfdc} tile counts are therefore excluded from the fabric
+resource totals in Table~\ref{tab:tx_chain_util}.
+
+% ---- §4.7.3 ------------------------------------------------
 \subsection{Top-Level Timing Summary}
 \label{subsec:toplevel_timing}
-% ------------------------------------------------------------
 
-% TODO: Table — production implementation timing at 250 MHz
-%       Columns: Clock | Frequency | WNS | WHS | TNS | Status
-%       Rows: pl_clk (250 MHz), s_axi_aclk (100 MHz),
-%             s0_axis_aclk (32.163 MHz), clk_dac0 (40.204 MHz)
-%       Source: production .rpt
-% TODO: 1 sentence: confirms timing closure of fully integrated
-%       design; note any marginal paths carried forward from
-%       isolation results (e.g. RFDC s_axi hold slack)
+\begin{table}[htbp]
+  \caption{Post-route timing summary for all constrained clock domains
+           in the fully integrated transmit chain implementation on the
+           \ac{rfsoc}~4x2 platform.
+           WNS\,=\,worst negative slack (setup); WHS\,=\,worst hold
+           slack. All domains meet timing; failing endpoint count is
+           zero across the design.
+           Source: Vivado~2024.2 routed timing report.}
+  \label{tab:tx_chain_timing}
+  \centering
+  \begin{tabular}{lrrrr}
+    \hline
+    Clock Domain                              & Freq.\ (MHz) & WNS (ns)          & WHS (ns) & Status  \\
+    \hline
+    \texttt{clk\_pl\_1}  (\ac{pl} fabric)    &      250.000 & \phantom{0}0.427  &    0.011 & Met     \\
+    \texttt{clk\_pl\_0}  (\ac{ps} config)    &      100.000 & \phantom{0}2.293  &    0.018 & Met     \\
+    \texttt{clk\_out\_dac} (\ac{dac} fabric) &       32.163 &          28.943   &    0.048 & Met     \\
+    \texttt{RFDAC0\_CLK} (\ac{rfdc} source)  &       40.204 &      \textemdash  & \textemdash & PW only \\
+    \hline
+  \end{tabular}
+\end{table}
+
+% V-04 deleted (R-1): "Table~\ref{tab:tx_chain_timing} summarises... four clock domains."
+% V-05 deleted (R-1): "The tightest constraint is the 250\,MHz... satisfy timing."
+% V-06 deleted (R-1): "The \ac{dac} fabric clock (32.163\,MHz)... large positive slack."
+The design contains two \ac{cdc} zones.
+\emph{\Ac{cdc} Zone~1} bridges the \texttt{clk\_pl\_1} (250\,MHz)
+and \texttt{clk\_pl\_0} (100\,MHz) domains bidirectionally at the
+\ac{axi} SmartConnect interface between the \ac{ps} and the \ac{pl}
+fabric.
+Vivado \ac{ip} Integrator inserts the required synchronisation logic
+automatically for this interface pair, and all inter-clock paths close
+with positive margin in both directions.
+\emph{\Ac{cdc} Zone~2} bridges the 250\,MHz fabric domain to the
+32.163\,MHz \ac{dac} sample-clock domain in a unidirectional path
+from PL-09 to the \ac{rfdc}.
+The \texttt{fifo\_generator\_tx} \texttt{FIFO36E2} provides an
+asynchronous handshake across this boundary.
+The \texttt{RFDAC0\_CLK} domain is pulse-width constrained only and
+carries no user-logic endpoints.
+Setup and hold slack are therefore not reported for this domain.
 
 \section{Test Equipment}
 \label{sec:test_equipment}
