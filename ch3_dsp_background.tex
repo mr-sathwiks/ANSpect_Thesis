@@ -4,62 +4,23 @@
 % \input target — no \documentclass or \begin{document}
 % STATUS: SKELETON — run 'expand CH-3.X' to flesh out
 % v1.0  01-Sep-2026  Split from chapters.tex
-% v1.1  01-Sep-2026  Corrections against ITU-T J.83 Annex B PDF ground truth:
-%                    Fix: Transport framing — checksum replaces sync byte
-%                         in every packet (not inverted every 8th)
-%                    Fix: SRRC paragraph — removed non-standard impl params
-%                         (span/sps/taps/output rate belong in CH-4)
-%                    Fix: Trellis — BCC puncture rate 4/5 vs overall 19/20
-%                    Fix: Gray coding claim flagged as unverified from std
-%                    Fix: Table docsis_params — restored §B.6.1 info bit rate
-%                    Fix: SRRC TODO — corrected citation key
-%                    Fix: Trellis TODO — corrected rate description
+% v1.1  01-Sep-2026  Corrections against ITU-T J.83 Annex B PDF ground truth
 % v1.2  01-Sep-2026  Removed \eqref{} from equation-introducing sentences
-%                    in CH-3.3 — citation now on prose sentence only,
-%                    \label{} retained for cross-reference
-%                    Affected equations: eq:rs_primitive_poly,
-%                    eq:rs_generator_poly, eq:rs_generator_expanded,
-%                    eq:rs_message_poly, eq:rs_remainder,
-%                    eq:rs_codeword, eq:rs_extended_symbol
 % v1.3  02-Sep-2026  Replaced all bare acronyms with \ac{} commands
-%                    per abbrevs.tex v1.2 scan results
-%                    Removed manual (SHORT) expansions — glossaries handles
-%                    first-use expansion automatically
-%                    Flagged: duplicate sentence in RS subsection
-%                    Flagged: RFSoC not yet in abbrevs.tex (CH-2 scope)
-% v1.4  18-Sep-2026  Audit fixes:
-%                    Fix: Transport framing §3.2 — replaced incorrect
-%                         "invert every 8th packet" with correct checksum
-%                         mechanism per §B.4 PDF ground truth
-%                    Fix: §3.2 RS overview — "bytes" → "seven-bit symbols"
-%                         (×2: input count + correction capacity)
-%                    Fix: §3.7 QAM256 — removed duplicate Figure B.19
-%                         sentence in C-Word to Symbol Mapping subsection
-%                    Fix: §3.1 — added \cite{DOCSIS3} to subscriber
-%                         demodulation sentence
-%                    Fix: §3.1 — added \cite{ITU_J83} to RF chain
-%                         requirements sentence
-%                    Warn: §3.7 Gray coding claim hedged pending
-%                          Figure B.19 verification
-%                    Fix: §3.2 overview ¶256-QAM — removed duplicate
-%                         Figure B.19 sentence and unverified gray
-%                         coding claim (mirrors §3.7 fix)
-% v1.5  03-Nov-2026  Condensation pass — ~22pp → ~17pp target:
-%                    Removed all \subsection{} in §3.1–§3.9;
-%                    \paragraph{} retained in §3.6 (×3), §3.7 (×4), §3.9 (×1)
-%                    §3.1: cut subscriber + final paragraph
-%                    §3.2: cut all 8 stage-overview \paragraph{} blocks
-%                    §3.3: cut 4 generator/remainder equations;
-%                          \phantomsection label for eq:rand_reduction_poly
-%                    §3.4: cut RX references, trade-off paragraph
-%                    §3.5: eq:rand_reduction_poly → cross-ref eq:rs_primitive_poly
-%                    §3.6: cut binary pattern block, RX sentences
-%                    §3.7: eq:bcc_g1+g2 → \begin{align};
-%                          eq:precode_x+y → \begin{align}; cut RX refs
-%                    §3.8: 3 subsections → flat prose
-%                    §3.9: cut 5 of 6 equations; keep eq:srrc_bw only;
-%                          cut RF Output Signal Model subsection
-%                    Blank lines before \begin{equation} removed throughout
+% v1.4  18-Sep-2026  Audit fixes
+% v1.5  03-Nov-2026  Condensation pass (~22pp -> ~17pp target)
+% v1.6  13-Nov-2026  Surgical reduction pass:
+%                    S-new-5: §3.3 encoder semicolon split
+%                    V-23: §3.3 "valid codeword has roots" sentence removed
+%                    V-24: §3.4 correction-capability tail trimmed
+%                    V-26/S-07: §3.5 LFSR semicolon split
+%                    V-28/S-08: §3.7 trellis group semicolon split
+%                    V-30: §3.8 "look-up table" implementation sentence removed
+%                    V-31: §3.8 "16x16 grid" table-restatement sentence removed
+%                    V-32/S-09: §3.8 C-word semicolon split; bijection clause removed
+%                    V-33: §3.9 standard reference editorial note removed
+%                    V-34: §3.9 RX ISI sentence removed (TX-only scope)
+%                    E-CH3-01: §3.9 em-dashes fixed in filter param sentence
 % ============================================================
 
 % ------------------------------------------------------------
@@ -215,16 +176,15 @@ through $\alpha^5$, yielding 5 parity symbols~\cite{ITU_J83}.
 \end{table}
 
 The encoder multiplies the 122-symbol message polynomial by $x^5$
-and divides by $g(x)$; the 5-coefficient remainder $r(x)$ forms the
-RS parity symbols, which are appended to the message to yield the
-systematic codeword~\cite{ITU_J83}
+and divides by $g(x)$~\cite{ITU_J83}.
+The 5-coefficient remainder $r(x)$ forms the RS parity symbols,
+which are appended to the message to yield the systematic
+codeword~\cite{ITU_J83}
 \begin{equation}
   c(x) = m_{121}x^{126} + \cdots + m_0 x^5
         + r_4 x^4 + r_3 x^3 + r_2 x^2 + r_1 x + r_0
   \label{eq:rs_codeword}
 \end{equation}
-\noindent A valid codeword has roots at $\alpha^1$ through
-$\alpha^5$~\cite{ITU_J83}.
 
 The J.83B code is extended from $(127,\,121)$ to $(128,\,122)$
 by evaluating the 127-symbol codeword at the sixth power of
@@ -268,9 +228,7 @@ Convolutional interleaving is applied to the \ac{rs}-encoded symbol
 stream after the encoder and before the randomizer~\cite{ITU_J83}.
 Its purpose is to disperse burst channel errors across multiple
 \ac{rs} blocks so that contiguous corrupted symbols are distributed
-into isolated single-symbol errors, keeping the per-block error
-count within the correction capability of the $(128,\,122)$
-\ac{rs} code~\cite{ITU_J83}.
+into isolated single-symbol errors~\cite{ITU_J83}.
 
 The J.83B interleaver is a Forney convolutional type, operating on
 7-bit symbols that match the \ac{rs} field width~\cite{ITU_J83}.
@@ -377,8 +335,8 @@ the GF(128) recurrence polynomial~\cite{ITU_J83}
 \noindent where $\alpha$ is the primitive element of
 $\mathrm{GF}(128)$, satisfying the same reduction polynomial as
 the \ac{rs} encoder~\eqref{eq:rs_primitive_poly}~\cite{ITU_J83}.
-The \ac{lfsr} consists of three 7-bit state registers; at each
-clock step the state advances according to~\eqref{eq:rand_poly},
+The \ac{lfsr} consists of three 7-bit state registers~\cite{ITU_J83}.
+At each clock step the state advances according to~\eqref{eq:rand_poly},
 producing one 7-bit \ac{pn} output symbol per step~\cite{ITU_J83}.
 
 The randomizer is re-initialized at each \ac{fec} frame boundary
@@ -536,10 +494,10 @@ constellation mapper~\cite{ITU_J83}.
 The trellis encoder operates on fixed-length trellis
 groups~\cite{ITU_J83}.
 For \ac{qam256}, each group contains 38 input bits and produces
-5 output symbols (40 bits); non-sync groups source all 38 bits
-from the serialized \ac{rs} stream, while sync groups replace
-8 bits with sync bits drawn from the \ac{fec} frame
-trailer~\cite{ITU_J83}.
+5 output symbols (40~bits)~\cite{ITU_J83}.
+Non-sync groups source all 38 bits from the serialized \ac{rs}
+stream, while sync groups replace 8 bits with sync bits drawn
+from the \ac{fec} frame trailer~\cite{ITU_J83}.
 The 78{,}888-bit frame (Section~\ref{sec:framesync}) divides
 into 2{,}076 trellis groups: 2{,}071 non-sync and 5 sync groups
 at the end of the frame~\cite{ITU_J83}.
@@ -648,23 +606,15 @@ Section~\ref{sec:qam256}~\cite{ITU_J83}.
 The \ac{qam256} symbol mapper converts the 8-bit C-words
 produced by the trellis encoder into complex \ac{iq} baseband
 symbols for transmission~\cite{ITU_J83}.
-Each C-word addresses a look-up table that returns the complex
-symbol coordinates corresponding to that C-word's position on the
-\ac{qam256} constellation defined by Figure~B.19 of the
-standard~\cite{ITU_J83}.
 The mapper produces one complex sample per C-word, forming a
 stream at the J.83B symbol rate of 5.360537\,Msym/s that feeds
 directly into the \ac{srrc} pulse shaping filter described in
 Section~\ref{sec:srrc}~\cite{ITU_J83}.
 
-The J.83B constellation is a square $16 \times 16$ grid in the
-\ac{iq} plane, with 256 distinct symbol positions and minimum
-Euclidean distance uniform across the grid~\cite{ITU_J83}.
 The trellis encoder delivers the coded and uncoded 4-bit streams
 to the mapper, which concatenates them into a single 8-bit C-word
 with ordering $C_7 C_6 C_5 C_4\,C_3 C_2 C_1 C_0$ where $C_7$
-is the \ac{msb}; the mapping is a bijection over the range
-$0$\,--\,$255$~\cite{ITU_J83}.
+is the \ac{msb}~\cite{ITU_J83}.
 The differential precoder bits $C_4$ and $C_0$ occupy the two
 differentially encoded positions within the C-word, as noted in
 Section~\ref{sec:trellis}~\cite{ITU_J83}.
@@ -714,13 +664,6 @@ after \ac{qam256} mapping~\cite{ITU_J83}.
 The \ac{srrc} filter bandlimits the symbol stream to fit within
 the 6\,MHz channel allocation and controls the spectral shape of
 the transmitted signal~\cite{ITU_J83}.
-The standard refers to this filter as a square-root raised cosine
-filter in Table~B.3 and as a Root-Nyquist filter in
-\S B.6.2~\cite{ITU_J83}.
-The cascade of the transmit and receive \ac{srrc} filters
-satisfies the Nyquist \ac{isi} criterion~\cite{proakis_dsp},
-ensuring zero \ac{isi} at the receiver sampling instants when
-the channel is ideal.
 
 \paragraph{J.83B filter specification:}
 For \ac{qam256}, Table~B.3 of the standard specifies the transmit
@@ -740,8 +683,8 @@ North American channel plan~\cite{ITU_J83,SCTE07}.
 
 The J.83B \ac{srrc} pulse shaping parameters are summarized in
 Table~\ref{tab:srrc_params}.
-Filter implementation parameters---including filter span, samples
-per symbol, tap count, and output sample rate---are
+Filter implementation parameters, including filter span, samples
+per symbol, tap count, and output sample rate, are
 implementation-specific design choices described in Chapter~4.
 
 \begin{table}[htbp]
