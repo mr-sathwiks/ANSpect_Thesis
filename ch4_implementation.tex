@@ -78,7 +78,7 @@ chain.
   %  Dashed lines show AXI-Lite control paths from PS to PL-01 and
   %  RFDC-01, and from PL-11 to PL-06.]
   \centering
-  \includegraphics[width=0.5\linewidth]{figures/ch4/ch4_sys_arch_block}
+  \includegraphics[width=0.8\linewidth]{figures/ch4/ch4_sys_arch_block}
   \caption{ANSpect transmit system block diagram.
            Thick solid lines: \ac{axi}-Stream data path.
            Thin solid lines: clock distribution
@@ -156,14 +156,14 @@ handing off to PS-03.
   \label{tab:ps02_signals}
   \centering
   \small
-  \begin{tabular}{l l p{3.2cm} p{7cm}}
+  \begin{tabular}{l l p{3.2cm} p{7.5cm}}
     \hline
     Signal & Dir & Type & Description \\
     \hline
     \path{stage0_input.bin}
       & in & Filesystem
       & \ac{mpegts} binary input; 188-byte packets;
-        \texttt{byte[0]~=~0x47}; notebook working directory \\[2pt]
+        \texttt{byte[0]~=~0x47}\\[2pt]
     \texttt{overlay bitfile}
       & in & Filesystem
       & Vivado bitstream; name varies per build;
@@ -179,13 +179,11 @@ handing off to PS-03.
     \texttt{anspect\_ctrl\_regs}
       & in & \texttt{pynq.overlay} \texttt{.DefaultIP}
       & PL-11 register file \ac{ip} object; \ac{mmio} write to
-        \texttt{FRAME\_SYNC\_CW}; base address
-        \texttt{VERIFY-ON-REBUILD} \\[2pt]
+        \texttt{FRAME\_SYNC\_CW}\\[2pt]
     \texttt{data\_buf}
       & out & \texttt{pynq.buffer}
       & Contiguous \ac{ddr} buffer (\texttt{np.uint8},
-        cacheable, flushed); \texttt{device\_address}
-        + \texttt{len} delivered to PS-03 \\
+        cacheable, flushed)\\
     \hline
   \end{tabular}
 \end{table}
@@ -195,6 +193,7 @@ handing off to PS-03.
 % ------------------------------------------------------------------
 
 \FloatBarrier
+\clearpage
 \paragraph{Boot Sequence.}
 
 Boot sequence steps followed are as per Figure~\ref{fig:ps02_boot}.
@@ -215,7 +214,7 @@ Boot sequence steps followed are as per Figure~\ref{fig:ps02_boot}.
 %       complete the flow.]
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.50\linewidth]{figures/ch4/ch4_ps02_boot_sequence}
+  \includegraphics[width=0.70\linewidth]{figures/ch4/ch4_ps02_boot_sequence}
   \caption{PS-02 \texttt{j83b\_tx\_chain()} ten-step boot sequence.
            Steps~1--3 ordering is mandatory: \ac{rf} clocks must be
            programmed before the bitstream is loaded or the
@@ -285,21 +284,19 @@ never takes effect during operation (Section~\ref{subsec:dac_tile228}).
 
 \FloatBarrier
 \paragraph{Verification.}
-
+\leavevmode\par
 \begin{table}[!h]
   \caption{PS-02 hardware verification checks.}
   \label{tab:ps02_checks}
   \centering
   \small
-  \begin{tabular}{l p{4.8cm} p{6.4cm}}
+  \begin{tabular}{l p{4.8cm} p{7.5cm}}
     \hline
     Check & Description & Pass Criterion \\
     \hline
     CHECK-01
       & \ac{ip} inventory
-      & \texttt{rfdc}, \texttt{axi\_dma\_ps\_pl},
-        \texttt{anspect\_ctrl\_regs} present in
-        \texttt{ol.ip\_dict}; base addresses printed \\[2pt]
+      & \texttt{ol.ip\_dict}; Check all \ac{ip} blocks\\[2pt]
     CHECK-02
       & \texttt{FRAME\_SYNC\_CW} write
       & \texttt{(read(0x20)~\&~0xF)~==~0x0} \\[2pt]
@@ -317,8 +314,7 @@ never takes effect during operation (Section~\ref{subsec:dac_tile228}).
       & \texttt{len(stage0)~\%~188~==~0} \\[2pt]
     CHECK-07
       & \ac{ddr} buffer allocation
-      & \texttt{allocate()} and \texttt{flush()} complete
-        without exception \\
+      & \texttt{allocate()} and \texttt{flush()} must complete\\
     \hline
   \end{tabular}
 \end{table}
@@ -386,7 +382,7 @@ All \ac{dma} register access uses raw \ac{mmio}~\cite{AMD_PG021}.
         must remain allocated until \ac{dma} stop \\[2pt]
     \texttt{DATA\_PHYS}
       & in & \texttt{uint32}
-      & \texttt{data\_buf.device\_address} ---
+      & \texttt{data\_buf.device\_address};
         \ac{ddr} physical base address \\[2pt]
     \texttt{DATA\_LEN}
       & in & \texttt{int}
@@ -399,13 +395,13 @@ All \ac{dma} register access uses raw \ac{mmio}~\cite{AMD_PG021}.
         base address \texttt{VERIFY-ON-REBUILD} \\[2pt]
     \texttt{bd\_mem}
       & local & \texttt{pynq.buffer}
-      & \ac{bd} ring --- 16~$\times$~\texttt{np.uint32},
+      & \ac{bd} ring: 16~$\times$~\texttt{np.uint32},
         \texttt{cacheable=False};
         allocated and freed within PS-03 \\[2pt]
     (cyclic stream)
       & out & \ac{axi}-Stream
       & Continuous 8-bit TX stream $\rightarrow$ PL-01
-        $\rightarrow$ PL-02; hardware path only ---
+        $\rightarrow$ PL-02; hardware path only;
         no Python object \\
     \hline
   \end{tabular}
@@ -481,6 +477,7 @@ monitoring is performed by polling
 % ------------------------------------------------------------------
 
 \FloatBarrier
+\clearpage
 \paragraph{Verification.}
 \leavevmode\par
 
@@ -573,7 +570,7 @@ Figure~\ref{fig:pl01_pipeline}.
   %       TRANSPORT_FRAMING. Left arrow labelled AXI-Lite + AXI-MM (DDR).
   %       Right arrow labelled M_AXIS_MM2S / 8-bit AXI-S.
   %       250 MHz PL clock label below the chain.]
-  \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl01_pipeline}
+  \includegraphics[width=0.75\linewidth]{figures/ch4/ch4_pl01_pipeline}
   \caption{PL-01 position in the J.83B transmit chain: PS-03 initiates
            the \ac{sg} \ac{mm2s} transfer; 8-bit \ac{axi}-Stream output
            feeds PL-02 at 250\,MHz.}
@@ -596,7 +593,7 @@ Figure~\ref{fig:pl01_pipeline}.
   %       M_AXI_MM2S bus, M_AXIS_MM2S with individual signals
   %       (tdata[7:0], tkeep[0:0], tlast, tready, tvalid),
   %       mm2s_prmry_reset_out_n, mm2s_introut.]
-  \includegraphics[width=0.40\linewidth]{figures/ch4/ch4_pl01_ip_block}
+  \includegraphics[width=0.50\linewidth]{figures/ch4/ch4_pl01_ip_block}
   \caption{Vivado IP Integrator view of \texttt{axi\_dma\_ps\_pl}
            (\texttt{axi\_dma}~v7.1) showing all port interfaces.}
   \label{fig:pl01_ip_block}
@@ -1113,7 +1110,7 @@ blocks to PL-04.
   %       INTERLEAVER. Arrows between blocks are labeled 8-bit AXI-S.
   %       A 250 MHz PL clock label appears below the chain; no CDC
   %       marker is present at either boundary.]
-  \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl03_pipeline}
+  \includegraphics[width=0.75\linewidth]{figures/ch4/ch4_pl03_pipeline}
   \caption{Pipeline position of PL-03 \texttt{rs\_enc} in the
            J.83B Annex~B transmit chain.}
   \label{fig:pl03_pipeline}
@@ -2145,7 +2142,7 @@ reference.
 Board validation of PL-05 was performed as part of the PL-02--PL-06
 transmit chain (Section~\ref{subsec:txchain_board}).
 
-%\clearpage
+\clearpage
 
 % ============================================================
 % CH-4.3.6  PL-06: FRAME_SYNC_ENC
@@ -2251,6 +2248,7 @@ The port list is given in Table~\ref{tab:pl06_ports}.
 % ------------------------------------------------------------------
 
 \FloatBarrier
+\clearpage
 \paragraph{FSM.}
 
 Figure~\ref{fig:pl06_fsm} shows the state transition diagram.
@@ -2592,7 +2590,7 @@ Table~\ref{tab:pl07_ports} lists all ports.
 %       m_axi_tready.]
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl07_ip_block}
+  \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl07_ip_block}
   \caption{PL-07 \texttt{trellis\_enc} packaged as a Vivado \ac{ip}
            core. Both slave and master interface groups include
            \texttt{tlast}: the slave consumes the frame boundary from
@@ -3656,7 +3654,7 @@ into a 32-bit word with I in the lower half and Q in the upper half.
 %       (32-bit): [31:16]=Q_fix16 (red), [15:0]=I_fix16 (red).]
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.40\linewidth]{figures/ch4/ch4_pl09_packer}
+  \includegraphics[width=0.60\linewidth]{figures/ch4/ch4_pl09_packer}
   \caption{\texttt{tdata} bus layout across the PL-08 to PL-09 boundary.
            \texttt{iq\_packer\_pl08\_to\_pl09} remaps the 128-bit upstream
            word to the 112-bit \ac{fir} \ac{ip} input format, inserting
@@ -4068,7 +4066,7 @@ Figure~\ref{fig:pl11_pipeline}.
 %       (Pre-Production).]
 \begin{figure}[htbp]
   \centering
-    \includegraphics[width=0.55\linewidth]{figures/ch4/ch4_pl11_ip_block}
+    \includegraphics[width=0.65\linewidth]{figures/ch4/ch4_pl11_ip_block}
   \caption{Vivado IP Integrator view of \texttt{anspect\_ctrl\_regs}
            showing the \texttt{S00\_AXI} interface bus and all
            custom configuration output ports.}
@@ -4351,7 +4349,7 @@ The full port list is given in Table~\ref{tab:rfdc01_ports}.
 %       clock output clk_dac0; interrupt output irq.]
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.25\linewidth]{figures/ch4/ch4_rfdc01_ip_block}
+  \includegraphics[width=0.40\linewidth]{figures/ch4/ch4_rfdc01_ip_block}
   \caption{RFDC-01 \texttt{rfdc\_dac} packaged as a Vivado \ac{ip}
            core in \ac{ip} Integrator, showing the
            \ac{axi}4-Stream slave and \ac{axi}4-Lite slave interface
@@ -5119,6 +5117,7 @@ $\text{CHDIV} = 24$, giving
 $F_\text{out} = 7{,}719.168 / 24 = 321.632$\,MHz~\cite{TI_LMX2594}.
 
 % ------------------------------------------------------------
+\clearpage
 \subsection{\texttt{xrfclk} API}
 \label{subsec:xrfclk}
 
@@ -5646,7 +5645,7 @@ consumer during the test, not a signal deficiency.
   %  Signal Quality, and Symbol Quality all show 100% with green
   %  bars. Program field shows 1: 1.1 TF HD1.]
   \centering
-  \includegraphics[width=0.5\linewidth]{figures/ch4/hdhomerun_rfdc_lock}
+  \includegraphics[width=0.6\linewidth]{figures/ch4/hdhomerun_rfdc_lock}
   \caption{HDHomeRun Config GUI -- \ac{rfdc} passthrough lock
            result. Physical channel: \texttt{qam256:7}; signal
            strength, signal quality, and symbol quality all at
@@ -5693,7 +5692,7 @@ the channel-power and occupied-bandwidth captures, respectively.
   %  roll-off on both edges. Channel power integration box spans
   %  6.000 MHz. Measured channel power: -28.6 dBm.]
   \centering
-  \includegraphics[width=0.5\linewidth]{figures/ch4/anritsu_ch_power}
+  \includegraphics[width=0.65\linewidth]{figures/ch4/anritsu_ch_power}
   \caption{Anritsu MS2721B channel-power measurement at 177.0\,MHz
            (DOCSIS cable channel~7). Integration bandwidth:
            6.000\,MHz; measured channel power: $-$28.6\,dBm;
@@ -5706,7 +5705,7 @@ the channel-power and occupied-bandwidth captures, respectively.
   %  177.0 MHz. Vertical markers indicate 99% power boundaries.
   %  Occupied bandwidth reads 5.526 MHz; XdB = 5.8 dB.]
   \centering
-  \includegraphics[width=0.5\linewidth]{figures/ch4/anritsu_occ_bw}
+  \includegraphics[width=0.65\linewidth]{figures/ch4/anritsu_occ_bw}
   \caption{Anritsu MS2721B occupied-bandwidth measurement at
            177.0\,MHz. 99\,\% power bandwidth: 5.526\,MHz;
            measured X\,dB: 5.8\,dB.}
@@ -5738,7 +5737,7 @@ Section~\ref{subsec:lock_failure}.
   %  green. Signal Quality and Symbol Quality both show 0% with no
   %  green fill. Program field is empty. Network Target reads none.]
   \centering
-  \includegraphics[width=0.5\linewidth]{figures/ch4/hdhomerun_full_system}
+  \includegraphics[width=0.6\linewidth]{figures/ch4/hdhomerun_full_system}
   \caption{HDHomeRun Config GUI -- full system validation lock
            result. Physical channel: \texttt{auto:7}; signal
            strength 100\,\%; signal quality and symbol quality
@@ -5773,13 +5772,15 @@ Table~\ref{tab:device_lock} gives the lock results for both devices.
   \end{tabular}
 \end{table}
 
+\FloatBarrier
+
 Both devices produced the same failure on the \ac{rfsoc} output.
 The two devices use different demodulator silicon from different
 manufacturers; identical failure on both rules out a
 device-specific compatibility issue and confirms a signal-level
 compliance problem in the transmitted bitstream.
 
-\FloatBarrier
+
 \paragraph{Diagnostic Gate.}
 \leavevmode\par
 
